@@ -209,7 +209,6 @@ void ChatCommandClient::ProcessChatMsg(const std::vector<std::string>& splitted_
             return;
         }
 
-
 	try
 	{
 		CmdGoTo(std::stoi(splitted_msg[2]), std::stoi(splitted_msg[3]), std::stoi(splitted_msg[4]));
