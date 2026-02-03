@@ -1,7 +1,7 @@
-#include <sstream>
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <sstream>
 
 #include "botcraft/Game/World/World.hpp"
 #include "botcraft/Game/Entities/EntityManager.hpp"
@@ -87,7 +87,16 @@ void ChatCommandClient::Handle(ClientboundSystemChatPacket& msg)
 
 void WriteScreenshot(const int w, const int h, const std::vector<uint8_t> & pixels)
 {
-	printf("SCREENSHOT: %dx%d pixels\n", w, h);
+	std::string name = std::to_string(long(time(nullptr))) + ".ppm";
+
+	printf("SCREENSHOT: %dx%d pixels in %s\n", w, h, name.c_str());
+
+	FILE *fh = fopen(name.c_str(), "wb");
+	if (fh) {
+		fprintf(fh, "P6\n%d\n%d\n255\n", w, h);
+		fwrite(pixels.data(), 1, pixels.size(), fh);
+		fclose(fh);
+	}
 }
 
 void ChatCommandClient::ProcessChatMsg(const std::vector<std::string>& splitted_msg)
