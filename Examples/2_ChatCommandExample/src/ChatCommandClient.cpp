@@ -26,8 +26,6 @@ ChatCommandClient::ChatCommandClient(const bool use_renderer_, std::pair<int, in
     std::cout << "        name stop\n";
     std::cout << "    Check perimeter for spawnable blocks and save spawnable positions to file:\n";
     std::cout << "        name check_perimeter [x y z (default = player position)] radius (default = 128) [check_lighting (default = true)]\n";
-    std::cout << "    Disconnect:\n";
-    std::cout << "        name die\n";
     std::cout << "    Place a block:\n";
     std::cout << "        name place_block minecraft:item x y z\n";
     std::cout << "    Break a block:\n";
@@ -87,7 +85,7 @@ void ChatCommandClient::Handle(ClientboundSystemChatPacket& msg)
 }
 #endif
 
-void WriteScreenshot(const int w, const int h, const std::vector<uint8_t> & pixels)
+void WriteScreenshot(const int w, const int h, const std::vector<uint8_t> & pixels, void *arg)
 {
 	std::string name = std::to_string(long(time(nullptr))) + ".ppm";
 
@@ -101,7 +99,8 @@ void WriteScreenshot(const int w, const int h, const std::vector<uint8_t> & pixe
 		fclose(fh);
 	}
 
-//	SendChatMessage("Wrote: " + name);
+	ChatCommandClient *c = reinterpret_cast<ChatCommandClient *>(arg);
+	c->SendChatMessage("Wrote screenshot to file: " + name);
 }
 
 void ChatCommandClient::ProcessChatMsg(const std::vector<std::string>& splitted_msg)
@@ -163,11 +162,11 @@ void ChatCommandClient::ProcessChatMsg(const std::vector<std::string>& splitted_
     else if (splitted_msg[1] == "screenshot")
     {
 	    printf("Making screenshot\n");
-	    local_player->SetPitch(0.);
-	    rendering_manager->Screenshot(WriteScreenshot);
+	    rendering_manager->Screenshot(WriteScreenshot, this);
     }
     else if (splitted_msg[1] == "stop")
     {
+	SendChatMessage("Stopped");
         // Stop any running behaviour
         SetBehaviourTree(nullptr);
     }
@@ -202,10 +201,6 @@ void ChatCommandClient::ProcessChatMsg(const std::vector<std::string>& splitted_
             check_lighting = std::stoi(splitted_msg[6]);
         }
         CheckPerimeter(pos, radius, check_lighting);
-    }
-    else if (splitted_msg[1] == "die")
-    {
-        should_be_closed = true;
     }
     else if (splitted_msg[1] == "place_block")
     {
@@ -315,10 +310,6 @@ void ChatCommandClient::ProcessChatMsg(const std::vector<std::string>& splitted_
             .end();
 
         SetBehaviourTree(tree);
-    }
-    else
-    {
-        return;
     }
 }
 
