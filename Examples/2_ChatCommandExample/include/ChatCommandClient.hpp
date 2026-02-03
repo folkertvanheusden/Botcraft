@@ -1,5 +1,10 @@
 #pragma once
 
+#include <condition_variable>
+#include <mutex>
+#include <thread>
+#include <vector>
+
 #include "botcraft/Game/Vector3.hpp"
 #include "botcraft/AI/TemplatedBehaviourClient.hpp"
 
@@ -13,6 +18,9 @@ public:
     ChatCommandClient(const bool use_renderer_, std::pair<int, int> resolution);
     ~ChatCommandClient();
 
+    void SetScreenshot(const int w, const int h, const std::vector<uint8_t> & pixels);
+    void ClearScreenshot();
+
 protected:
 #if PROTOCOL_VERSION < 759 /* < 1.19 */
     virtual void Handle(ProtocolCraft::ClientboundChatPacket& msg) override;
@@ -25,4 +33,9 @@ protected:
     void CmdGoTo(int x, int y, int z);
 
     std::thread *http_handler { nullptr };
+    std::mutex   screenshot_lock;
+    std::condition_variable  screenshot_cv;
+    std::vector<uint8_t> screenshot_pixels;
+    int          screenshot_w { 0 };
+    int          screenshot_h { 0 };
 };

@@ -19,6 +19,12 @@
 using namespace Botcraft;
 using namespace ProtocolCraft;
 
+void WriteScreenshot(const int w, const int h, const std::vector<uint8_t> & pixels, void *arg)
+{
+	ChatCommandClient *c = reinterpret_cast<ChatCommandClient *>(arg);
+	c->SetScreenshot(w, h, pixels);
+}
+
 ChatCommandClient::ChatCommandClient(const bool use_renderer_, std::pair<int, int> resolution) :
 	TemplatedBehaviourClient<ChatCommandClient>(use_renderer_, resolution)
 {
@@ -62,6 +68,28 @@ ChatCommandClient::ChatCommandClient(const bool use_renderer_, std::pair<int, in
 					{
 						return;
 					}
+			    });
+
+		    svr.Get("/screenshot", [&](const httplib::Request &req, httplib::Response &res) {
+				        printf("Wait for screenshot...\n");
+					ClearScreenshot();
+					rendering_manager->Screenshot(WriteScreenshot, this);
+
+					std::unique_lock<std::mutex> lck(screenshot_lock);
+					while(screenshot_pixels.empty())
+						screenshot_cv.wait(lck);
+
+					std::string header = "P6\n" + std::to_string(screenshot_w) + "\n" + std::to_string(screenshot_h) + "\n255\n";
+					std::vector<uint8_t> out(header.begin(), header.end());
+					for(int y=screenshot_h - 1; y >=0; y--)
+						out.insert(out.end(), screenshot_pixels.begin() + y * screenshot_w * 3, screenshot_pixels.begin() + (y + 1) * screenshot_w * 3);
+				        printf("Transmit screenshot (%dx%d, %zu bytes)\n", screenshot_w, screenshot_h, out.size());
+
+					res.set_content_provider(out.size(), "image/x-portable-pixmap", [&, out](size_t offset, size_t length, httplib::DataSink &sink) {
+						printf("%zu %zu | %zu\n", offset, length, out.size());
+						sink.write(reinterpret_cast<const char *>(out.data() + offset), length);
+						return true;
+					});
 			    });
 
 		    svr.listen("0.0.0.0", 8080);
@@ -118,22 +146,19 @@ void ChatCommandClient::Handle(ClientboundSystemChatPacket& msg)
 }
 #endif
 
-void WriteScreenshot(const int w, const int h, const std::vector<uint8_t> & pixels, void *arg)
+void ChatCommandClient::SetScreenshot(const int w, const int h, const std::vector<uint8_t> & pixels)
 {
-	std::string name = std::to_string(long(time(nullptr))) + ".ppm";
+	std::unique_lock<std::mutex> lck(screenshot_lock);
+	screenshot_w = w;
+	screenshot_h = h;
+	screenshot_pixels = pixels;
+	screenshot_cv.notify_all();
+}
 
-	printf("SCREENSHOT: %dx%d pixels in %s\n", w, h, name.c_str());
-
-	FILE *fh = fopen(name.c_str(), "wb");
-	if (fh) {
-		fprintf(fh, "P6\n%d\n%d\n255\n", w, h);
-		for(int y=h-1; y>=0; y--)
-			fwrite(&pixels.data()[w * 3 * y], 3, w, fh);
-		fclose(fh);
-	}
-
-	ChatCommandClient *c = reinterpret_cast<ChatCommandClient *>(arg);
-	c->SendChatMessage("Wrote screenshot to file: " + name);
+void ChatCommandClient::ClearScreenshot()
+{
+	std::unique_lock<std::mutex> lck(screenshot_lock);
+	screenshot_pixels.clear();
 }
 
 void ChatCommandClient::CmdGoTo(int x, int y, int z)
