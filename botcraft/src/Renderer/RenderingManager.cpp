@@ -214,7 +214,8 @@ namespace Botcraft
                     glClearColor(current_color[0], current_color[1], current_color[2], 1.0f);
                     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-		    if (!paused) {
+		    if (!paused)
+		    {
 			    //Change view matrix
 			    world_renderer->UpdateViewMatrix();
 
