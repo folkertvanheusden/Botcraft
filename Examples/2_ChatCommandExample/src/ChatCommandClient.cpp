@@ -72,6 +72,7 @@ ChatCommandClient::ChatCommandClient(const bool use_renderer_, std::pair<int, in
 
 		    svr.Get("/screenshot", [&](const httplib::Request &req, httplib::Response &res) {
 				        printf("Wait for screenshot...\n");
+				        rendering_manager->Unpause();
 					ClearScreenshot();
 					rendering_manager->Screenshot(WriteScreenshot, this);
 
@@ -153,6 +154,7 @@ void ChatCommandClient::SetScreenshot(const int w, const int h, const std::vecto
 	screenshot_h = h;
 	screenshot_pixels = pixels;
 	screenshot_cv.notify_all();
+	rendering_manager->Pause();
 }
 
 void ChatCommandClient::ClearScreenshot()
@@ -225,6 +227,7 @@ void ChatCommandClient::ProcessChatMsg(const std::vector<std::string>& splitted_
     else if (splitted_msg[1] == "screenshot")
     {
 	    printf("Making screenshot\n");
+	    rendering_manager->Unpause();
 	    rendering_manager->Screenshot(WriteScreenshot, this);
     }
     else if (splitted_msg[1] == "stop")

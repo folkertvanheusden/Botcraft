@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <unordered_set>
 #include <mutex>
 #include <functional>
@@ -62,6 +63,9 @@ namespace Botcraft
 
             // Set a flag to terminate the rendering loop after the current frame
             void Close();
+
+	    void Pause() { paused = true; }
+	    void Unpause() { paused = false; }
 
             // Set mouse and keyboard callbacks to handle user inputs
             void SetMouseCallback(std::function<void(double, double)> callback);
@@ -156,6 +160,8 @@ namespace Botcraft
 
             std::array<bool, static_cast<int>(KEY_CODE::NUMBER_OF_KEYS)> is_key_pressed;
 
+	    std::atomic_bool paused { true };  // default paused
+
             bool inventory_open;
             bool behaviour_open;
 
@@ -186,7 +192,8 @@ namespace Botcraft
 	    std::string screenshot_path;
 	    std::optional<std::function<void(const int, const int, const std::vector<unsigned char> &, void *arg)>> screenshot_callback;
 	    void *screenshot_arg { nullptr };
-	    bool take_screenshot;
+            std::mutex screenshot_mutex;
+            bool take_screenshot;
 
             bool running;
 
