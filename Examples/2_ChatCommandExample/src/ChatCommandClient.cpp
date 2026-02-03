@@ -45,6 +45,25 @@ ChatCommandClient::ChatCommandClient(const bool use_renderer_, std::pair<int, in
 					SendChatMessage(what);
 			    });
 
+		    svr.Post("/goto", [&](const auto& req, auto& res) {
+					try
+					{
+						int x = std::stoi(req.get_param_value("x"));
+						int y = std::stoi(req.get_param_value("y"));
+						int z = std::stoi(req.get_param_value("z"));
+						printf("HTTP[goto]: %d,%d,%d\n", x, y, z);
+						CmdGoTo(x, y, z);
+					}
+					catch (const std::invalid_argument&)
+					{
+						return;
+					}
+					catch (const std::out_of_range&)
+					{
+						return;
+					}
+			    });
+
 		    svr.listen("0.0.0.0", 8080);
 	    });
 }
@@ -117,42 +136,10 @@ void WriteScreenshot(const int w, const int h, const std::vector<uint8_t> & pixe
 	c->SendChatMessage("Wrote screenshot to file: " + name);
 }
 
-void ChatCommandClient::ProcessChatMsg(const std::vector<std::string>& splitted_msg)
+void ChatCommandClient::CmdGoTo(int x, int y, int z)
 {
-    if (splitted_msg.size() < 2 || splitted_msg[0] != network_manager->GetMyName())
-    {
-        return;
-    }
-
-    if (splitted_msg[1] == "help")
-    {
-	    SendChatMessage("goto / place_block / dig / interact / screenshot");
-    }
-    else if (splitted_msg[1] == "goto")
-    {
-        if (splitted_msg.size() < 5)
-        {
-            SendChatMessage("Usage: [BotName] [goto] [x] [y] [z] [speed_multiplier]");
-            return;
-        }
-        Position target_position;
         float speed_multiplier = 1.0f;
-        try
-        {
-            target_position = Position(std::stoi(splitted_msg[2]), std::stoi(splitted_msg[3]), std::stoi(splitted_msg[4]));
-            if (splitted_msg.size() > 5)
-            {
-                speed_multiplier = std::stof(splitted_msg[5]);
-            }
-        }
-        catch (const std::invalid_argument&)
-        {
-            return;
-        }
-        catch (const std::out_of_range&)
-        {
-            return;
-        }
+        Position target_position = Position(x, y, z);
 
         auto tree = Builder<ChatCommandClient>("goto tree")
             .sequence()
@@ -176,6 +163,40 @@ void ChatCommandClient::ProcessChatMsg(const std::vector<std::string>& splitted_
             .end();
 
         SetBehaviourTree(tree);
+}
+
+void ChatCommandClient::ProcessChatMsg(const std::vector<std::string>& splitted_msg)
+{
+    if (splitted_msg.size() < 2 || splitted_msg[0] != network_manager->GetMyName())
+    {
+        return;
+    }
+
+    if (splitted_msg[1] == "help")
+    {
+	    SendChatMessage("goto / place_block / dig / interact / screenshot");
+    }
+    else if (splitted_msg[1] == "goto")
+    {
+        if (splitted_msg.size() < 5)
+        {
+            SendChatMessage("Usage: [BotName] [goto] [x] [y] [z] [speed_multiplier]");
+            return;
+        }
+
+
+	try
+	{
+		CmdGoTo(std::stoi(splitted_msg[2]), std::stoi(splitted_msg[3]), std::stoi(splitted_msg[4]));
+	}
+	catch (const std::invalid_argument&)
+	{
+		return;
+	}
+	catch (const std::out_of_range&)
+	{
+		return;
+	}
     }
     else if (splitted_msg[1] == "screenshot")
     {

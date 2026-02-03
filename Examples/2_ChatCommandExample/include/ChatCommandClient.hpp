@@ -22,6 +22,7 @@ protected:
 #endif
 
     void ProcessChatMsg(const std::vector<std::string>& splitted_msg);
+    void CmdGoTo(int x, int y, int z);
 
     std::thread *http_handler { nullptr };
 };
