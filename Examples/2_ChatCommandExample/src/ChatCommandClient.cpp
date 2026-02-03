@@ -34,6 +34,8 @@ ChatCommandClient::ChatCommandClient(const bool use_renderer_, std::pair<int, in
     std::cout << "        name dig x y z\n";
     std::cout << "    Interact (right click) a block:\n";
     std::cout << "        name interact x y z\n";
+    std::cout << "    Screen shot:\n";
+    std::cout << "        name screenshot\n";
 }
 
 ChatCommandClient::~ChatCommandClient()
@@ -94,18 +96,16 @@ void WriteScreenshot(const int w, const int h, const std::vector<uint8_t> & pixe
 	FILE *fh = fopen(name.c_str(), "wb");
 	if (fh) {
 		fprintf(fh, "P6\n%d\n%d\n255\n", w, h);
-		fwrite(pixels.data(), 1, pixels.size(), fh);
+		for(int y=h-1; y>=0; y--)
+			fwrite(&pixels.data()[w * 3 * y], 3, w, fh);
 		fclose(fh);
 	}
+
+//	SendChatMessage("Wrote: " + name);
 }
 
 void ChatCommandClient::ProcessChatMsg(const std::vector<std::string>& splitted_msg)
 {
-    printf("Making screenshot\n");
-    std::shared_ptr<LocalPlayer> local_player = entity_manager->GetLocalPlayer();
-    local_player->SetPitch(45.);
-    rendering_manager->Screenshot(WriteScreenshot);
-
     if (splitted_msg.size() < 2 || splitted_msg[0] != network_manager->GetMyName())
     {
         return;
