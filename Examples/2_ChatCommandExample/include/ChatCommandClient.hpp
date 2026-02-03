@@ -23,10 +23,5 @@ protected:
 
     void ProcessChatMsg(const std::vector<std::string>& splitted_msg);
 
-    // Check for any spawnable blocks in a sphere from pos and prints
-    // all the positions into a file
-    // Use check_lighting to add a check on light block value (> 7)
-    // (warning: ignore top slabs and upside-down stairs,
-    // you should check for such blocks manually)
-    void CheckPerimeter(const Botcraft::Position& pos, const float radius, const bool check_lighting);
+    std::thread *http_handler { nullptr };
 };

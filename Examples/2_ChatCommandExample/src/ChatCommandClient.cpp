@@ -1,4 +1,7 @@
+// required: libcpp-httplib-dev
+
 #include <fstream>
+#include <httplib.h>
 #include <iostream>
 #include <iterator>
 #include <sstream>
@@ -24,8 +27,6 @@ ChatCommandClient::ChatCommandClient(const bool use_renderer_, std::pair<int, in
     std::cout << "        name goto x y z (speed_multiplier=1.0)\n";
     std::cout << "    Stop what you're doing:\n";
     std::cout << "        name stop\n";
-    std::cout << "    Check perimeter for spawnable blocks and save spawnable positions to file:\n";
-    std::cout << "        name check_perimeter [x y z (default = player position)] radius (default = 128) [check_lighting (default = true)]\n";
     std::cout << "    Place a block:\n";
     std::cout << "        name place_block minecraft:item x y z\n";
     std::cout << "    Break a block:\n";
@@ -34,11 +35,24 @@ ChatCommandClient::ChatCommandClient(const bool use_renderer_, std::pair<int, in
     std::cout << "        name interact x y z\n";
     std::cout << "    Screen shot:\n";
     std::cout << "        name screenshot\n";
+
+    http_handler = new std::thread([&] {
+		    httplib::Server svr;
+
+		    svr.Post("/say", [&](const auto& req, auto& res) {
+					std::string what = req.get_param_value("text");
+					printf("HTTP[say]: %s\n", what.c_str());
+					SendChatMessage(what);
+			    });
+
+		    svr.listen("0.0.0.0", 8080);
+	    });
 }
 
 ChatCommandClient::~ChatCommandClient()
 {
-
+	http_handler->join();
+	delete http_handler;
 }
 
 #if PROTOCOL_VERSION < 759 /* < 1.19 */
@@ -110,7 +124,11 @@ void ChatCommandClient::ProcessChatMsg(const std::vector<std::string>& splitted_
         return;
     }
 
-    if (splitted_msg[1] == "goto")
+    if (splitted_msg[1] == "help")
+    {
+	    SendChatMessage("goto / place_block / dig / interact / screenshot");
+    }
+    else if (splitted_msg[1] == "goto")
     {
         if (splitted_msg.size() < 5)
         {
@@ -169,38 +187,6 @@ void ChatCommandClient::ProcessChatMsg(const std::vector<std::string>& splitted_
 	SendChatMessage("Stopped");
         // Stop any running behaviour
         SetBehaviourTree(nullptr);
-    }
-    else if (splitted_msg[1] == "check_perimeter")
-    {
-        float radius = 128.0f;
-        Position pos = Position(
-            static_cast<int>(std::floor(entity_manager->GetLocalPlayer()->GetPosition().x)),
-            static_cast<int>(std::floor(entity_manager->GetLocalPlayer()->GetPosition().y)),
-            static_cast<int>(std::floor(entity_manager->GetLocalPlayer()->GetPosition().z))
-        );
-        bool check_lighting = true;
-
-        if (splitted_msg.size() == 3)
-        {
-            radius = std::stof(splitted_msg[2]);
-        }
-        else if (splitted_msg.size() == 4)
-        {
-            radius = std::stof(splitted_msg[2]);
-            check_lighting = std::stoi(splitted_msg[3]);
-        }
-        else if (splitted_msg.size() == 6)
-        {
-            pos = Position(std::stoi(splitted_msg[2]), std::stoi(splitted_msg[3]), std::stoi(splitted_msg[4]));
-            radius = std::stof(splitted_msg[5]);
-        }
-        else if (splitted_msg.size() == 7)
-        {
-            pos = Position(std::stoi(splitted_msg[2]), std::stoi(splitted_msg[3]), std::stoi(splitted_msg[4]));
-            radius = std::stof(splitted_msg[5]);
-            check_lighting = std::stoi(splitted_msg[6]);
-        }
-        CheckPerimeter(pos, radius, check_lighting);
     }
     else if (splitted_msg[1] == "place_block")
     {
@@ -310,81 +296,5 @@ void ChatCommandClient::ProcessChatMsg(const std::vector<std::string>& splitted_
             .end();
 
         SetBehaviourTree(tree);
-    }
-}
-
-void ChatCommandClient::CheckPerimeter(const Position& pos, const float radius, const bool check_lighting)
-{
-    std::vector<Position> found_positions;
-
-    Position current_position;
-    for (int y = static_cast<int>(-radius - 1); y < radius + 1; ++y)
-    {
-        current_position.y = pos.y + y;
-        for (int x = static_cast<int>(-radius - 1); x < radius + 1; ++x)
-        {
-            current_position.x = pos.x + x;
-            for (int z = static_cast<int>(-radius - 1); z < radius + 1; ++z)
-            {
-                current_position.z = pos.z + z;
-
-                if (x * x + y * y + z * z > radius * radius)
-                {
-                    continue;
-                }
-
-                const Blockstate* block = world->GetBlock(current_position);
-
-                if (block == nullptr || !block->IsAir())
-                {
-                    continue;
-                }
-
-                Position adjacent_position = current_position;
-                adjacent_position.y -= 1;
-
-                const Blockstate *adjacent_block = world->GetBlock(adjacent_position);
-
-                if (!adjacent_block ||
-                    adjacent_block->IsFluid() ||
-                    !adjacent_block->IsSolid() ||
-                    adjacent_block->IsTransparent() ||
-                    adjacent_block->GetName() == "minecraft:bedrock" ||
-                    adjacent_block->GetName() == "minecraft:barrier")
-                {
-                    continue;
-                }
-
-                adjacent_position.y += 2;
-
-                adjacent_block = world->GetBlock(adjacent_position);
-
-                if (adjacent_block &&
-                    (adjacent_block->IsSolid() ||
-                    adjacent_block->IsFluid()))
-                {
-                    continue;
-                }
-
-                if (check_lighting && world->GetBlockLight(current_position) > 7)
-                {
-                    continue;
-                }
-
-                found_positions.push_back(current_position);
-            }
-        }
-    }
-
-    std::ofstream output_file("perimeter_check_" + std::to_string(pos.x) + "_" + std::to_string(pos.y) + "_" + std::to_string(pos.z) + "_radius_" + std::to_string(radius) + ".txt", std::ios::out);
-
-    if (output_file.is_open())
-    {
-        for (int i = 0; i < found_positions.size(); ++i)
-        {
-            output_file << found_positions[i] << "\n";
-        }
-
-        output_file.close();
     }
 }
