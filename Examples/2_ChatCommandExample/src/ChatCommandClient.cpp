@@ -134,6 +134,9 @@ ChatCommandClient::ChatCommandClient(const bool use_renderer_, std::pair<int, in
 				        printf("Wait for screenshot...\n");
 				        rendering_manager->Unpause();
 					ClearScreenshot();
+					std::shared_ptr<LocalPlayer> local_player = entity_manager->GetLocalPlayer();
+					local_player->SetPitch(0);  // look forward
+					usleep(501000);  // give bot time to lift its head
 					rendering_manager->Screenshot(WriteScreenshot, this);
 
 					std::unique_lock<std::mutex> lck(screenshot_lock);
