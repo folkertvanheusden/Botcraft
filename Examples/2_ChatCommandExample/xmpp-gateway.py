@@ -1,0 +1,138 @@
+#! /usr/bin/env python3
+
+from argparse import ArgumentParser
+from getpass import getpass
+
+import asyncio
+import controller
+import logging
+import slixmpp
+
+import io
+
+from typing import Optional
+
+
+class MinecraftXMPPBot(slixmpp.ClientXMPP):
+    def __init__(self, jid, password):
+        slixmpp.ClientXMPP.__init__(self, jid, password)
+
+        self.domain = jid[jid.find('@') + 1:]
+
+        self.add_event_handler("session_start", self.start)
+        self.add_event_handler("message", self.message)
+
+
+    async def start(self, event):
+        print(dir(event))
+        self.send_presence()
+        await self.get_roster()
+
+
+    async def upload_screenshot(self, content):
+        print('Uploading content...')
+
+        try:
+            upload_file = self['xep_0363'].upload_file
+#            if not self['xep_0454']:
+#                print(
+#                    'The xep_0454 module isn\'t available. '
+#                    'Ensure you have \'cryptography\' '
+#                    'from extras_require installed.',
+#                    file=sys.stderr,
+#                )
+#            else:
+#                upload_file = self['xep_0454'].upload_file
+            return await upload_file('test.png', input_file=io.BytesIO(content), domain=self.domain, timeout=10)
+
+        except IqTimeout:
+            raise TimeoutError('Could not send message in time')
+
+        return None
+
+
+    async def message(self, msg):
+        print(dir(msg))
+        body = msg['body']
+#        if msg['nick'] != self.nick:
+        if True:
+            line = body.strip().replace('\r', '\n')
+            lf = line.find('\n') 
+            if lf != -1:
+                line = line[0:lf]
+            parts = line.split()
+            if len(parts) < 1:
+                return
+
+            cmd = parts[0].lower()
+            if cmd == 'goto':
+                if len(parts) == 4:
+                    controller.move_to(float(parts[1]), float(parts[2]), float(parts[3]))
+                    self.send_message(mto=msg['from'].bare, mbody='ok', mtype='groupchat')
+                else:
+                    print('x, y or z missing for goto')
+
+            elif cmd == 'screenshot':
+                if len(parts) == 1:
+                    png = controller.screenshot()
+                    url = await self.upload_screenshot(png)
+                    html = f'<body xmlns="http://www.w3.org/1999/xhtml"><a href="{url}">{url}</a></body>'
+                    message = self.make_message(mto=msg['from'].bare, mbody=url, mhtml=html)
+                    message['oob']['url'] = url
+                    message.send()
+                else:
+                    print('no parameter required for this command')
+
+
+if __name__ == '__main__':
+    # Setup the command line arguments.
+    parser = ArgumentParser()
+
+    # Output verbosity options.
+    parser.add_argument("-q", "--quiet", help="set logging to ERROR",
+                        action="store_const", dest="loglevel",
+                        const=logging.ERROR, default=logging.INFO)
+    parser.add_argument("-d", "--debug", help="set logging to DEBUG",
+                        action="store_const", dest="loglevel",
+                        const=logging.DEBUG, default=logging.INFO)
+
+    # JID and password options.
+    parser.add_argument("-j", "--jid", dest="jid",
+                        help="JID to use")
+    parser.add_argument("-p", "--password", dest="password",
+                        help="password to use")
+    parser.add_argument("-r", "--room", dest="room",
+                        help="MUC room to join")
+    parser.add_argument("-n", "--nick", dest="nick",
+                        help="MUC nickname")
+
+    args = parser.parse_args()
+
+    # Setup logging.
+    logging.basicConfig(level=args.loglevel,
+                        format='%(levelname)-8s %(message)s')
+
+    # Setup the MUCBot and register plugins. Note that while plugins may
+    # have interdependencies, the order in which you register them does
+    # not matter.
+    xmpp = MinecraftXMPPBot(args.jid, args.password)
+    xmpp.register_plugin('xep_0030') # Service Discovery
+    xmpp.register_plugin('xep_0004') # Data Forms
+    xmpp.register_plugin('xep_0060') # PubSub
+    xmpp.register_plugin('xep_0199') # XMPP Ping
+
+    xmpp.register_plugin('xep_0066')
+    xmpp.register_plugin('xep_0071')
+    xmpp.register_plugin('xep_0128')
+    xmpp.register_plugin('xep_0363')
+    try:
+        xmpp.register_plugin('xep_0454')
+    except slixmpp.plugins.base.PluginNotFound:
+        log.error(
+            'Could not load xep_0454. '
+            'Ensure you have \'cryptography\' from extras_require installed.'
+        )
+
+    # Connect to the XMPP server and start processing XMPP stanzas.
+    xmpp.connect()
+    asyncio.get_event_loop().run_forever()
