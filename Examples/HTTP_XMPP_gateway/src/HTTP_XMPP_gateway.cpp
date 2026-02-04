@@ -15,7 +15,7 @@
 #include "botcraft/AI/BehaviourTree.hpp"
 #include "botcraft/AI/Tasks/AllTasks.hpp"
 
-#include "ChatCommandClient.hpp"
+#include "HTTP_XMPP_gateway.hpp"
 
 using namespace Botcraft;
 using namespace ProtocolCraft;
@@ -79,12 +79,12 @@ void write_PNG_file(FILE *fh, int ncols, int nrows, unsigned char *pixels)
 
 void WriteScreenshot(const int w, const int h, const std::vector<uint8_t> & pixels, void *arg)
 {
-	ChatCommandClient *c = reinterpret_cast<ChatCommandClient *>(arg);
+	HTTP_XMPP_gateway *c = reinterpret_cast<HTTP_XMPP_gateway *>(arg);
 	c->SetScreenshot(w, h, pixels);
 }
 
-ChatCommandClient::ChatCommandClient(const bool use_renderer_, std::pair<int, int> resolution) :
-	TemplatedBehaviourClient<ChatCommandClient>(use_renderer_, resolution)
+HTTP_XMPP_gateway::HTTP_XMPP_gateway(const bool use_renderer_, std::pair<int, int> resolution) :
+	TemplatedBehaviourClient<HTTP_XMPP_gateway>(use_renderer_, resolution)
 {
     std::cout << "Known commands:\n";
     std::cout << "    Pathfinding to position:\n";
@@ -223,14 +223,14 @@ ChatCommandClient::ChatCommandClient(const bool use_renderer_, std::pair<int, in
 	    });
 }
 
-ChatCommandClient::~ChatCommandClient()
+HTTP_XMPP_gateway::~HTTP_XMPP_gateway()
 {
 	http_handler->join();
 	delete http_handler;
 }
 
 #if PROTOCOL_VERSION < 759 /* < 1.19 */
-void ChatCommandClient::Handle(ClientboundChatPacket& msg)
+void HTTP_XMPP_gateway::Handle(ClientboundChatPacket& msg)
 {
     ManagersClient::Handle(msg);
 
@@ -242,7 +242,7 @@ void ChatCommandClient::Handle(ClientboundChatPacket& msg)
     ProcessChatMsg(splitted);
 }
 #else
-void ChatCommandClient::Handle(ClientboundPlayerChatPacket& msg)
+void HTTP_XMPP_gateway::Handle(ClientboundPlayerChatPacket& msg)
 {
     ManagersClient::Handle(msg);
 
@@ -260,7 +260,7 @@ void ChatCommandClient::Handle(ClientboundPlayerChatPacket& msg)
     ProcessChatMsg(splitted);
 }
 
-void ChatCommandClient::Handle(ClientboundSystemChatPacket& msg)
+void HTTP_XMPP_gateway::Handle(ClientboundSystemChatPacket& msg)
 {
     ManagersClient::Handle(msg);
 
@@ -273,7 +273,7 @@ void ChatCommandClient::Handle(ClientboundSystemChatPacket& msg)
 }
 #endif
 
-void ChatCommandClient::SetScreenshot(const int w, const int h, const std::vector<uint8_t> & pixels)
+void HTTP_XMPP_gateway::SetScreenshot(const int w, const int h, const std::vector<uint8_t> & pixels)
 {
 	std::unique_lock<std::mutex> lck(screenshot_lock);
 	screenshot_w = w;
@@ -283,18 +283,18 @@ void ChatCommandClient::SetScreenshot(const int w, const int h, const std::vecto
 	rendering_manager->Pause();
 }
 
-void ChatCommandClient::ClearScreenshot()
+void HTTP_XMPP_gateway::ClearScreenshot()
 {
 	std::unique_lock<std::mutex> lck(screenshot_lock);
 	screenshot_pixels.clear();
 }
 
-void ChatCommandClient::CmdGoTo(int x, int y, int z)
+void HTTP_XMPP_gateway::CmdGoTo(int x, int y, int z)
 {
         float speed_multiplier = 1.0f;
         Position target_position = Position(x, y, z);
 
-        auto tree = Builder<ChatCommandClient>("goto tree")
+        auto tree = Builder<HTTP_XMPP_gateway>("goto tree")
             .sequence()
                 // Perform the pathfinding in a Selector,
                 // so it exits as soon as one leaf
@@ -305,20 +305,20 @@ void ChatCommandClient::CmdGoTo(int x, int y, int z)
                     // possibilities to create a leaf. Note that
                     // only the lambda solution can use default
                     // parameters values
-                    .leaf("go to lambda", [=](ChatCommandClient& c) { return GoTo(c, target_position, 0, 0, 0, true, false, speed_multiplier); })
+                    .leaf("go to lambda", [=](HTTP_XMPP_gateway& c) { return GoTo(c, target_position, 0, 0, 0, true, false, speed_multiplier); })
                     .leaf("go to function", GoTo, target_position, 0, 0, 0, true, false, speed_multiplier)
                     .leaf("go to std::bind", std::bind(GoTo, std::placeholders::_1, target_position, 0, 0, 0, true, false, speed_multiplier))
                     // If goto fails, say something in chat
                     .leaf(Say, "Pathfinding failed :(")
                 .end()
                 // Switch back to empty behaviour
-                .leaf([](ChatCommandClient& c) { c.SetBehaviourTree(nullptr); return Status::Success; })
+                .leaf([](HTTP_XMPP_gateway& c) { c.SetBehaviourTree(nullptr); return Status::Success; })
             .end();
 
         SetBehaviourTree(tree);
 }
 
-void ChatCommandClient::ProcessChatMsg(const std::vector<std::string>& splitted_msg)
+void HTTP_XMPP_gateway::ProcessChatMsg(const std::vector<std::string>& splitted_msg)
 {
     if (splitted_msg.size() < 2 || splitted_msg[0] != network_manager->GetMyName())
     {
@@ -385,12 +385,12 @@ void ChatCommandClient::ProcessChatMsg(const std::vector<std::string>& splitted_
         }
         LOG_INFO("Asked to place a block at " << pos << " (" << item << ")");
 
-        auto tree = Builder<ChatCommandClient>("place block")
-            // shortcut for composite<Sequence<ChatCommandClient>>()
+        auto tree = Builder<HTTP_XMPP_gateway>("place block")
+            // shortcut for composite<Sequence<HTTP_XMPP_gateway>>()
             .sequence()
                 .succeeder().leaf(PlaceBlock, item, pos, PlayerDiggingFace::Up, true, true, true)
                 // Switch back to empty behaviour
-                .leaf([](ChatCommandClient& c) { c.SetBehaviourTree(nullptr); return Status::Success; })
+                .leaf([](HTTP_XMPP_gateway& c) { c.SetBehaviourTree(nullptr); return Status::Success; })
             .end();
 
         SetBehaviourTree(tree);
@@ -421,12 +421,12 @@ void ChatCommandClient::ProcessChatMsg(const std::vector<std::string>& splitted_
             return;
         }
 
-        auto tree = Builder<ChatCommandClient>("dig")
-            // shortcut for composite<Sequence<ChatCommandClient>>()
+        auto tree = Builder<HTTP_XMPP_gateway>("dig")
+            // shortcut for composite<Sequence<HTTP_XMPP_gateway>>()
             .sequence()
                 .succeeder().leaf("diggy diggy hole", Dig, pos, true, PlayerDiggingFace::Up, true)
                 // Switch back to empty behaviour
-                .leaf([](ChatCommandClient& c) { c.SetBehaviourTree(nullptr); return Status::Success; })
+                .leaf([](HTTP_XMPP_gateway& c) { c.SetBehaviourTree(nullptr); return Status::Success; })
             .end();
 
         SetBehaviourTree(tree);
@@ -452,8 +452,8 @@ void ChatCommandClient::ProcessChatMsg(const std::vector<std::string>& splitted_
             return;
         }
 
-        auto tree = Builder<ChatCommandClient>("interact")
-            // shortcut for composite<Sequence<ChatCommandClient>>()
+        auto tree = Builder<HTTP_XMPP_gateway>("interact")
+            // shortcut for composite<Sequence<HTTP_XMPP_gateway>>()
             .sequence()
                 .succeeder().sequence()
                     .leaf("go next to block", GoTo, pos, 4, 0, 1, true, false, 1.0f)
@@ -470,7 +470,7 @@ void ChatCommandClient::ProcessChatMsg(const std::vector<std::string>& splitted_
                     .leaf(RemoveBlackboardData, "InteractWithBlock.pos")
                 .end()
                 // Switch back to empty behaviour
-                .leaf([](ChatCommandClient& c) { c.SetBehaviourTree(nullptr); return Status::Success; })
+                .leaf([](HTTP_XMPP_gateway& c) { c.SetBehaviourTree(nullptr); return Status::Success; })
             .end();
 
         SetBehaviourTree(tree);

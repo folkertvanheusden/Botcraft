@@ -1,10 +1,5 @@
 #pragma once
 
-#include <condition_variable>
-#include <mutex>
-#include <thread>
-#include <vector>
-
 #include "botcraft/Game/Vector3.hpp"
 #include "botcraft/AI/TemplatedBehaviourClient.hpp"
 
@@ -12,14 +7,11 @@
 /// TemplatedBehaviourClient<T>, with this class as parameter.
 /// We can then use Behaviour Trees with this class as
 /// context, and do our stuff. We also override on Handle function
-class HTTP_XMPP_gateway : public Botcraft::TemplatedBehaviourClient<HTTP_XMPP_gateway>
+class ChatCommandClient : public Botcraft::TemplatedBehaviourClient<ChatCommandClient>
 {
 public:
-    HTTP_XMPP_gateway(const bool use_renderer_, std::pair<int, int> resolution);
-    ~HTTP_XMPP_gateway();
-
-    void SetScreenshot(const int w, const int h, const std::vector<uint8_t> & pixels);
-    void ClearScreenshot();
+    ChatCommandClient(const bool use_renderer_);
+    ~ChatCommandClient();
 
 protected:
 #if PROTOCOL_VERSION < 759 /* < 1.19 */
@@ -30,12 +22,11 @@ protected:
 #endif
 
     void ProcessChatMsg(const std::vector<std::string>& splitted_msg);
-    void CmdGoTo(int x, int y, int z);
 
-    std::thread *http_handler { nullptr };
-    std::mutex   screenshot_lock;
-    std::condition_variable  screenshot_cv;
-    std::vector<uint8_t> screenshot_pixels;
-    int          screenshot_w { 0 };
-    int          screenshot_h { 0 };
+    // Check for any spawnable blocks in a sphere from pos and prints
+    // all the positions into a file
+    // Use check_lighting to add a check on light block value (> 7)
+    // (warning: ignore top slabs and upside-down stairs,
+    // you should check for such blocks manually)
+    void CheckPerimeter(const Botcraft::Position& pos, const float radius, const bool check_lighting);
 };
