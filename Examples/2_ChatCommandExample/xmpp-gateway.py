@@ -60,17 +60,33 @@ class MinecraftXMPPBot(slixmpp.ClientXMPP):
             lf = line.find('\n') 
             if lf != -1:
                 line = line[0:lf]
+            line = line.replace(',', ' ')
+            line = line.replace('  ', ' ')
             parts = line.split()
             if len(parts) < 1:
                 return
 
             cmd = parts[0].lower()
-            if cmd == 'goto':
+            if cmd in ('help', '!help', '#help'):
+                    msg.reply('goto x y z\nlookat x y z\nstate\nscreenshot').send()
+
+            elif cmd in ('goto', 'go-to', 'go_to', 'moveto', 'move-to', 'move_to'):
                 if len(parts) == 4:
                     controller.move_to(float(parts[1]), float(parts[2]), float(parts[3]))
-                    self.send_message(mto=msg['from'].bare, mbody='ok', mtype='groupchat')
+                    msg.reply('ok').send()
                 else:
                     print('x, y or z missing for goto')
+
+            elif cmd in ('look-at', 'lookat', 'look_at'):
+                if len(parts) == 4:
+                    controller.look_at(float(parts[1]), float(parts[2]), float(parts[3]))
+                    msg.reply('ok').send()
+                else:
+                    print('x, y or z missing for goto')
+
+            elif cmd == 'state':
+                s = controller.state()
+                msg.reply("\n".join([f'{key}: {str(s[key])}' for key in s])).send()
 
             elif cmd == 'screenshot':
                 if len(parts) == 1:
