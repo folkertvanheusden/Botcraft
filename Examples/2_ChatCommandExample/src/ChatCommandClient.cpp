@@ -120,10 +120,12 @@ ChatCommandClient::ChatCommandClient(const bool use_renderer_, std::pair<int, in
 					}
 					catch (const std::invalid_argument&)
 					{
+						printf("goto: invalid argument\n");
 						return;
 					}
 					catch (const std::out_of_range&)
 					{
+						printf("goto: argument out of range\n");
 						return;
 					}
 			    });
@@ -131,19 +133,21 @@ ChatCommandClient::ChatCommandClient(const bool use_renderer_, std::pair<int, in
 		    svr.Post("/look-at", [&](const auto& req, auto& res) {
 					try
 					{
-						double x = std::stoi(req.get_param_value("x"));
-						double y = std::stoi(req.get_param_value("y"));
-						double z = std::stoi(req.get_param_value("z"));
-						printf("HTTP[look-at]: %d,%d,%d\n", x, y, z);
+						double x = std::stod(req.get_param_value("x"));
+						double y = std::stod(req.get_param_value("y"));
+						double z = std::stod(req.get_param_value("z"));
+						printf("HTTP[look-at]: %f,%f,%f\n", x, y, z);
 				                std::shared_ptr<LocalPlayer> local_player = entity_manager->GetLocalPlayer();
 						local_player->LookAt(Vector3<double>(x, y, z), true);
 					}
 					catch (const std::invalid_argument&)
 					{
+						printf("look-at: invalid argument\n");
 						return;
 					}
 					catch (const std::out_of_range&)
 					{
+						printf("look-at: argument out of range\n");
 						return;
 					}
 			    });
