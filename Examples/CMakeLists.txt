@@ -36,3 +36,4 @@ if (PROTOCOL_VERSION STRGREATER "470") # 1.14+
     add_subdirectory(6_DispenserFarmExample)
 endif()
 add_subdirectory(7_WorldEaterExample)
+add_subdirectory(HTTP_XMPP_gateway)

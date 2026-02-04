@@ -3,7 +3,7 @@
 
 #include "botcraft/Utilities/Logger.hpp"
 
-#include "ChatCommandClient.hpp"
+#include "HTTP_XMPP_gateway.hpp"
 
 void ShowHelp(const char* argv0)
 {
@@ -11,7 +11,6 @@ void ShowHelp(const char* argv0)
         << "Options:\n"
         << "\t-h, --help\tShow this help message\n"
         << "\t--address\tAddress of the server you want to connect to, default: 127.0.0.1:25565\n"
-        << "\t--login\t\tPlayer name in offline mode, empty for Microsoft account, default: BCChatCommand\n"
         << std::endl;
 }
 
@@ -19,7 +18,7 @@ struct Args
 {
     bool help = false;
     std::string address = "127.0.0.1:25565";
-    std::string login = "BCChatCommand";
+    std::string login = "";
     int width = 800;
     int height = 600;
 
@@ -58,7 +57,7 @@ int main(int argc, char* argv[])
             }
         }
 
-        ChatCommandClient client(true, { args.width, args.height });
+        HTTP_XMPP_gateway client(true, { args.width, args.height });
         client.SetAutoRespawn(true);
 
         LOG_INFO("Starting connection process");

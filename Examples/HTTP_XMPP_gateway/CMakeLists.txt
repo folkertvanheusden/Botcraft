@@ -1,9 +1,9 @@
-project(2_ChatCommandExample)
+project(HTTP_XMPP_gateway)
 
 set(${PROJECT_NAME}_SOURCE_FILES
-    ${PROJECT_SOURCE_DIR}/include/ChatCommandClient.hpp
+    ${PROJECT_SOURCE_DIR}/include/HTTP_XMPP_gateway.hpp
 
-    ${PROJECT_SOURCE_DIR}/src/ChatCommandClient.cpp
+    ${PROJECT_SOURCE_DIR}/src/HTTP_XMPP_gateway.cpp
     ${PROJECT_SOURCE_DIR}/src/main.cpp
 )
 set(${PROJECT_NAME}_INCLUDE_FOLDERS
