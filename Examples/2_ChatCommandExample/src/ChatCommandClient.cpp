@@ -1,9 +1,10 @@
-// required: libcpp-httplib-dev
+// required: libcpp-httplib-dev libpng-dev
 
 #include <fstream>
 #include <httplib.h>
 #include <iostream>
 #include <iterator>
+#include <png.h>
 #include <sstream>
 
 #include "botcraft/Game/World/World.hpp"
@@ -18,6 +19,63 @@
 
 using namespace Botcraft;
 using namespace ProtocolCraft;
+
+
+void libpng_error_handler(png_structp png, png_const_charp msg)
+{
+        printf("libpng error: %s\n", msg);
+}
+
+void libpng_warning_handler(png_structp png, png_const_charp msg)
+{
+        printf("libpng warning: %s\n", msg);
+}
+
+void write_PNG_file(FILE *fh, int ncols, int nrows, unsigned char *pixels)
+{
+        png_bytep *row_pointers = (png_bytep *)malloc(sizeof(png_bytep) * nrows);
+        if (!row_pointers)
+		return;
+        for(int y=0; y<nrows; y++)
+                row_pointers[y] = &pixels[y*ncols*3];
+
+        png_structp png = png_create_write_struct(PNG_LIBPNG_VER_STRING, nullptr, libpng_error_handler, libpng_warning_handler);
+        if (!png) {
+		free(row_pointers);
+		return;
+	}
+
+        png_infop info = png_create_info_struct(png);
+        if (info == nullptr) {
+		free(row_pointers);
+		return;
+	}
+
+        png_init_io(png, fh);
+
+        png_set_compression_level(png, 3);
+
+        png_set_IHDR(png, info, ncols, nrows, 8, PNG_COLOR_TYPE_RGB, PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
+
+        png_text text_ptr[2];
+        text_ptr[0].key = (png_charp)"Author";
+        text_ptr[0].text = (png_charp)"HTTPtoMinecraft";
+        text_ptr[0].compression = PNG_TEXT_COMPRESSION_NONE;
+        text_ptr[1].key = (png_charp)"URL";
+        text_ptr[1].text = (png_charp)"http://www.komputilo.nl/";
+        text_ptr[1].compression = PNG_TEXT_COMPRESSION_NONE;
+        png_set_text(png, info, text_ptr, 2);
+
+        png_write_info(png, info);
+
+        png_write_image(png, row_pointers);
+
+        png_write_end(png, nullptr);
+
+        png_destroy_write_struct(&png, &info);
+
+        free(row_pointers);
+}
 
 void WriteScreenshot(const int w, const int h, const std::vector<uint8_t> & pixels, void *arg)
 {
@@ -71,6 +129,8 @@ ChatCommandClient::ChatCommandClient(const bool use_renderer_, std::pair<int, in
 			    });
 
 		    svr.Get("/screenshot", [&](const httplib::Request &req, httplib::Response &res) {
+					if (!rendering_manager)
+						return;
 				        printf("Wait for screenshot...\n");
 				        rendering_manager->Unpause();
 					ClearScreenshot();
@@ -80,17 +140,28 @@ ChatCommandClient::ChatCommandClient(const bool use_renderer_, std::pair<int, in
 					while(screenshot_pixels.empty())
 						screenshot_cv.wait(lck);
 
-					std::string header = "P6\n" + std::to_string(screenshot_w) + "\n" + std::to_string(screenshot_h) + "\n255\n";
-					std::vector<uint8_t> out(header.begin(), header.end());
-					for(int y=screenshot_h - 1; y >=0; y--)
-						out.insert(out.end(), screenshot_pixels.begin() + y * screenshot_w * 3, screenshot_pixels.begin() + (y + 1) * screenshot_w * 3);
-				        printf("Transmit screenshot (%dx%d, %zu bytes)\n", screenshot_w, screenshot_h, out.size());
+					std::vector<uint8_t> temp;
+					for(int y=screenshot_h - 1; y>=0; y--)
+						temp.insert(temp.end(), screenshot_pixels.begin() + y * screenshot_w * 3, screenshot_pixels.begin() + (y + 1) * screenshot_w * 3);
 
-					res.set_content_provider(out.size(), "image/x-portable-pixmap", [&, out](size_t offset, size_t length, httplib::DataSink &sink) {
-						printf("%zu %zu | %zu\n", offset, length, out.size());
-						sink.write(reinterpret_cast<const char *>(out.data() + offset), length);
-						return true;
-					});
+					char  *data_out     = nullptr;
+					size_t data_out_len = 0;
+					FILE  *fh           = open_memstream(&data_out, &data_out_len);
+					if (!fh)
+						return;
+					write_PNG_file(fh, screenshot_w, screenshot_h, temp.data());
+					fclose(fh);
+
+				        printf("Transmit screenshot (%dx%d, %zu bytes)\n", screenshot_w, screenshot_h, data_out_len);
+
+					res.set_content_provider(data_out_len, "image/png",
+						[&, data_out](size_t offset, size_t length, httplib::DataSink &sink) {
+							printf("%zu %zu | %zu\n", offset, length, data_out_len);
+							sink.write(data_out + offset, length);
+							return true;
+						},
+						[data_out](bool success) { free(data_out); }
+					);
 			    });
 
 		    svr.listen("0.0.0.0", 8080);
@@ -268,6 +339,10 @@ void ChatCommandClient::ProcessChatMsg(const std::vector<std::string>& splitted_
             .end();
 
         SetBehaviourTree(tree);
+    }
+    else if (splitted_msg[1] == "terminate") {
+	    should_be_closed = true;  // TODO
+	    exit(0);
     }
     else if (splitted_msg[1] == "dig")
     {
