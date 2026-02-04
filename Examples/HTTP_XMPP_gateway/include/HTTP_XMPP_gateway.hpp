@@ -31,6 +31,8 @@ protected:
 
     void ProcessChatMsg(const std::vector<std::string>& splitted_msg);
     void CmdGoTo(int x, int y, int z);
+    void CmdDig(int x, int y, int z);
+    void CmdInteract(int x, int y, int z);
 
     std::thread *http_handler { nullptr };
     std::mutex   screenshot_lock;

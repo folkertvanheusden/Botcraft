@@ -70,9 +70,16 @@ class MinecraftXMPPBot(slixmpp.ClientXMPP):
             if cmd in ('help', '!help', '#help'):
                     msg.reply('goto x y z\nlookat x y z\nstate\nscreenshot').send()
 
-            elif cmd in ('goto', 'go-to', 'go_to', 'moveto', 'move-to', 'move_to'):
+            elif cmd in ('goto', 'go-to', 'go_to', 'moveto', 'move-to', 'move_to', 'move'):
                 if len(parts) == 4:
                     controller.move_to(float(parts[1]), float(parts[2]), float(parts[3]))
+                    msg.reply('ok').send()
+                else:
+                    print('x, y or z missing for goto')
+
+            elif cmd in ('relative-move', 'relativemove', 'relmove', 'rel-move'):
+                if len(parts) == 4:
+                    controller.relative_move(float(parts[1]), float(parts[2]), float(parts[3]))
                     msg.reply('ok').send()
                 else:
                     print('x, y or z missing for goto')
@@ -87,6 +94,20 @@ class MinecraftXMPPBot(slixmpp.ClientXMPP):
             elif cmd == 'state':
                 s = controller.state()
                 msg.reply("\n".join([f'{key}: {str(s[key])}' for key in s])).send()
+
+            elif cmd == 'dig':
+                if len(parts) == 4:
+                    controller.dig(float(parts[1]), float(parts[2]), float(parts[3]))
+                    msg.reply('ok').send()
+                else:
+                    print('x, y or z missing for dig')
+
+            elif cmd == 'interact':
+                if len(parts) == 4:
+                    controller.interact(float(parts[1]), float(parts[2]), float(parts[3]))
+                    msg.reply('ok').send()
+                else:
+                    print('x, y or z missing for interact')
 
             elif cmd == 'screenshot':
                 if len(parts) == 1:

@@ -83,6 +83,27 @@ void WriteScreenshot(const int w, const int h, const std::vector<uint8_t> & pixe
 	c->SetScreenshot(w, h, pixels);
 }
 
+std::optional<std::tuple<int, int, int> > get_coordinate(const httplib::Request &req)
+{
+	try
+	{
+		int x = std::stoi(req.get_param_value("x"));
+		int y = std::stoi(req.get_param_value("y"));
+		int z = std::stoi(req.get_param_value("z"));
+		return { { x, y, z } };
+	}
+	catch (const std::invalid_argument&)
+	{
+		printf("dig: invalid argument\n");
+	}
+	catch (const std::out_of_range&)
+	{
+		printf("dig: argument out of range\n");
+	}
+
+	return { };
+}
+
 HTTP_XMPP_gateway::HTTP_XMPP_gateway(const bool use_renderer_, std::pair<int, int> resolution) :
 	TemplatedBehaviourClient<HTTP_XMPP_gateway>(use_renderer_, resolution)
 {
@@ -109,47 +130,37 @@ HTTP_XMPP_gateway::HTTP_XMPP_gateway(const bool use_renderer_, std::pair<int, in
 					SendChatMessage(what);
 			    });
 
+		    svr.Post("/interact", [&](const auto& req, auto& res) {
+				    auto pos = get_coordinate(req);
+				    if (pos.has_value()) {
+					printf("HTTP[interact]: %d,%d,%d\n", std::get<0>(pos.value()), std::get<1>(pos.value()), std::get<2>(pos.value()));
+					CmdInteract(std::get<0>(pos.value()), std::get<1>(pos.value()), std::get<2>(pos.value()));
+				    }
+			    });
+
+		    svr.Post("/dig", [&](const auto& req, auto& res) {
+				    auto pos = get_coordinate(req);
+				    if (pos.has_value()) {
+					printf("HTTP[dig]: %d,%d,%d\n", std::get<0>(pos.value()), std::get<1>(pos.value()), std::get<2>(pos.value()));
+					CmdDig(std::get<0>(pos.value()), std::get<1>(pos.value()), std::get<2>(pos.value()));
+				    }
+			    });
+
 		    svr.Post("/goto", [&](const auto& req, auto& res) {
-					try
-					{
-						int x = std::stoi(req.get_param_value("x"));
-						int y = std::stoi(req.get_param_value("y"));
-						int z = std::stoi(req.get_param_value("z"));
-						printf("HTTP[goto]: %d,%d,%d\n", x, y, z);
-						CmdGoTo(x, y, z);
-					}
-					catch (const std::invalid_argument&)
-					{
-						printf("goto: invalid argument\n");
-						return;
-					}
-					catch (const std::out_of_range&)
-					{
-						printf("goto: argument out of range\n");
-						return;
-					}
+				    auto pos = get_coordinate(req);
+				    if (pos.has_value()) {
+					printf("HTTP[goto]: %d,%d,%d\n", std::get<0>(pos.value()), std::get<1>(pos.value()), std::get<2>(pos.value()));
+					CmdGoTo(std::get<0>(pos.value()), std::get<1>(pos.value()), std::get<2>(pos.value()));
+				    }
 			    });
 
 		    svr.Post("/look-at", [&](const auto& req, auto& res) {
-					try
-					{
-						double x = std::stod(req.get_param_value("x"));
-						double y = std::stod(req.get_param_value("y"));
-						double z = std::stod(req.get_param_value("z"));
-						printf("HTTP[look-at]: %f,%f,%f\n", x, y, z);
-				                std::shared_ptr<LocalPlayer> local_player = entity_manager->GetLocalPlayer();
-						local_player->LookAt(Vector3<double>(x, y, z), true);
-					}
-					catch (const std::invalid_argument&)
-					{
-						printf("look-at: invalid argument\n");
-						return;
-					}
-					catch (const std::out_of_range&)
-					{
-						printf("look-at: argument out of range\n");
-						return;
-					}
+				    auto pos = get_coordinate(req);
+				    if (pos.has_value()) {
+					printf("HTTP[look-at]: %d,%d,%d\n", std::get<0>(pos.value()), std::get<1>(pos.value()), std::get<2>(pos.value()));
+			                std::shared_ptr<LocalPlayer> local_player = entity_manager->GetLocalPlayer();
+					local_player->LookAt(Vector3<double>(std::get<0>(pos.value()), std::get<1>(pos.value()), std::get<2>(pos.value())), true);
+				    }
 			    });
 
 		    svr.Get("/state", [&](const httplib::Request &req, httplib::Response &res) {
@@ -289,6 +300,46 @@ void HTTP_XMPP_gateway::ClearScreenshot()
 	screenshot_pixels.clear();
 }
 
+void HTTP_XMPP_gateway::CmdDig(int x, int y, int z)
+{
+        auto tree = Builder<HTTP_XMPP_gateway>("dig")
+            // shortcut for composite<Sequence<HTTP_XMPP_gateway>>()
+            .sequence()
+                .succeeder().leaf("diggy diggy hole", Dig, Position(x, y, z), true, PlayerDiggingFace::Up, true)
+                // Switch back to empty behaviour
+                .leaf([](HTTP_XMPP_gateway& c) { c.SetBehaviourTree(nullptr); return Status::Success; })
+            .end();
+
+        SetBehaviourTree(tree);
+}
+
+void HTTP_XMPP_gateway::CmdInteract(int x, int y, int z)
+{
+	Position pos(x, y, z);
+        auto tree = Builder<HTTP_XMPP_gateway>("interact")
+            // shortcut for composite<Sequence<HTTP_XMPP_gateway>>()
+            .sequence()
+                .succeeder().sequence()
+                    .leaf("go next to block", GoTo, pos, 4, 0, 1, true, false, 1.0f)
+                    // Set interaction position in the blackboard
+                    .leaf(SetBlackboardData<Position>, "InteractWithBlock.pos", pos)
+                    .selector()
+                        // Perform action using the data in the blackboard
+                        .leaf("interact with block", InteractWithBlockBlackboard)
+                        // Say something if it fails
+                        .leaf(Say, "Interacting failed :(")
+                    .end()
+                    // Remove interaction position in the blackboard because
+                    // we don't want to leave a mess (and to show how to do it)
+                    .leaf(RemoveBlackboardData, "InteractWithBlock.pos")
+                .end()
+                // Switch back to empty behaviour
+                .leaf([](HTTP_XMPP_gateway& c) { c.SetBehaviourTree(nullptr); return Status::Success; })
+            .end();
+
+        SetBehaviourTree(tree);
+}
+
 void HTTP_XMPP_gateway::CmdGoTo(int x, int y, int z)
 {
         float speed_multiplier = 1.0f;
@@ -407,10 +458,9 @@ void HTTP_XMPP_gateway::ProcessChatMsg(const std::vector<std::string>& splitted_
             return;
         }
 
-        Position pos;
         try
         {
-            pos = Position(std::stoi(splitted_msg[2]), std::stoi(splitted_msg[3]), std::stoi(splitted_msg[4]));
+	    CmdDig(std::stoi(splitted_msg[2]), std::stoi(splitted_msg[3]), std::stoi(splitted_msg[4]));
         }
         catch (const std::invalid_argument&)
         {
@@ -420,16 +470,6 @@ void HTTP_XMPP_gateway::ProcessChatMsg(const std::vector<std::string>& splitted_
         {
             return;
         }
-
-        auto tree = Builder<HTTP_XMPP_gateway>("dig")
-            // shortcut for composite<Sequence<HTTP_XMPP_gateway>>()
-            .sequence()
-                .succeeder().leaf("diggy diggy hole", Dig, pos, true, PlayerDiggingFace::Up, true)
-                // Switch back to empty behaviour
-                .leaf([](HTTP_XMPP_gateway& c) { c.SetBehaviourTree(nullptr); return Status::Success; })
-            .end();
-
-        SetBehaviourTree(tree);
     }
     else if (splitted_msg[1] == "interact")
     {
@@ -438,10 +478,10 @@ void HTTP_XMPP_gateway::ProcessChatMsg(const std::vector<std::string>& splitted_
             SendChatMessage("Usage: [BotName] [interact] [x] [y] [z]");
             return;
         }
-        Position pos;
+
         try
         {
-            pos = Position(std::stoi(splitted_msg[2]), std::stoi(splitted_msg[3]), std::stoi(splitted_msg[4]));
+            CmdInteract(std::stoi(splitted_msg[2]), std::stoi(splitted_msg[3]), std::stoi(splitted_msg[4]));
         }
         catch (const std::invalid_argument&)
         {
@@ -451,28 +491,5 @@ void HTTP_XMPP_gateway::ProcessChatMsg(const std::vector<std::string>& splitted_
         {
             return;
         }
-
-        auto tree = Builder<HTTP_XMPP_gateway>("interact")
-            // shortcut for composite<Sequence<HTTP_XMPP_gateway>>()
-            .sequence()
-                .succeeder().sequence()
-                    .leaf("go next to block", GoTo, pos, 4, 0, 1, true, false, 1.0f)
-                    // Set interaction position in the blackboard
-                    .leaf(SetBlackboardData<Position>, "InteractWithBlock.pos", pos)
-                    .selector()
-                        // Perform action using the data in the blackboard
-                        .leaf("interact with block", InteractWithBlockBlackboard)
-                        // Say something if it fails
-                        .leaf(Say, "Interacting failed :(")
-                    .end()
-                    // Remove interaction position in the blackboard because
-                    // we don't want to leave a mess (and to show how to do it)
-                    .leaf(RemoveBlackboardData, "InteractWithBlock.pos")
-                .end()
-                // Switch back to empty behaviour
-                .leaf([](HTTP_XMPP_gateway& c) { c.SetBehaviourTree(nullptr); return Status::Success; })
-            .end();
-
-        SetBehaviourTree(tree);
     }
 }
