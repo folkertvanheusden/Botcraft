@@ -68,7 +68,7 @@ class MinecraftXMPPBot(slixmpp.ClientXMPP):
 
             cmd = parts[0].lower()
             if cmd in ('help', '!help', '#help'):
-                    msg.reply('goto x y z\nlookat x y z\nstate\nscreenshot').send()
+                    msg.reply('goto x y z\nlookat x y z\nstate\nscreenshot\ndig x y z\ninteract x y z').send()
 
             elif cmd in ('goto', 'go-to', 'go_to', 'moveto', 'move-to', 'move_to', 'move'):
                 if len(parts) == 4:
