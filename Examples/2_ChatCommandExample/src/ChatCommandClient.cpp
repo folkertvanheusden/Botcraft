@@ -128,6 +128,54 @@ ChatCommandClient::ChatCommandClient(const bool use_renderer_, std::pair<int, in
 					}
 			    });
 
+		    svr.Post("/look-at", [&](const auto& req, auto& res) {
+					try
+					{
+						double x = std::stoi(req.get_param_value("x"));
+						double y = std::stoi(req.get_param_value("y"));
+						double z = std::stoi(req.get_param_value("z"));
+						printf("HTTP[look-at]: %d,%d,%d\n", x, y, z);
+				                std::shared_ptr<LocalPlayer> local_player = entity_manager->GetLocalPlayer();
+						local_player->LookAt(Vector3<double>(x, y, z), true);
+					}
+					catch (const std::invalid_argument&)
+					{
+						return;
+					}
+					catch (const std::out_of_range&)
+					{
+						return;
+					}
+			    });
+
+		    svr.Get("/state", [&](const httplib::Request &req, httplib::Response &res) {
+				    std::shared_ptr<LocalPlayer> local_player = entity_manager->GetLocalPlayer();
+
+				    std::string state = "{ \"x\": " + std::to_string(local_player->GetX()) + ", " +
+						          "\"y\": " + std::to_string(local_player->GetY()) + ", " +
+						          "\"z\": " + std::to_string(local_player->GetZ()) + ", "
+						          "\"pitch\": " + std::to_string(local_player->GetPitch()) + ", "
+						          "\"yaw\": " + std::to_string(local_player->GetYaw()) + ", "
+						          "\"is-on-ground\": " + (local_player->GetOnGround() ? "true":"false") + ", "
+						          "\"is-flying\": " + (local_player->GetFlying() ? "true":"false") + ", "
+						          "\"may-fly\": " + (local_player->GetMayFly() ? "true":"false") + ", "
+						          "\"is-climbing\": " + (local_player->IsClimbing() ? "true":"false") + ", "
+						          "\"is-in-water\": " + (local_player->IsInWater() ? "true":"false") + ", "
+						          "\"is-in-lava\": " + (local_player->IsInLava() ? "true":"false") + ", "
+						          "\"is-in-fluid\": " + (local_player->IsInFluid() ? "true":"false") + ", "
+						          "\"insta-build\": " + (local_player->GetInstabuild() ? "true":"false") + ", "
+						          "\"may-build\": " + (local_player->GetMayBuild() ? "true":"false") + ", "
+						          "\"flying-speed\": " + std::to_string(local_player->GetFlyingSpeed()) + ", "
+						          "\"walking-speed\": " + std::to_string(local_player->GetWalkingSpeed()) + ", "
+						          "\"health\": " + std::to_string(local_player->GetHealth()) + ", "
+						          "\"food-saturation\": " + std::to_string(local_player->GetFoodSaturation()) + ", "
+						          "\"food\": " + std::to_string(local_player->GetFood()) +
+							 "}";
+
+				    res.set_content(state, "application/json");
+
+			    });
+
 		    svr.Get("/screenshot", [&](const httplib::Request &req, httplib::Response &res) {
 					if (!rendering_manager)
 						return;
