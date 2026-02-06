@@ -21,6 +21,11 @@ class MinecraftXMPPBot(slixmpp.ClientXMPP):
 
         self.add_event_handler("session_start", self.start)
         self.add_event_handler("message", self.message)
+        self.add_event_handler("disconnected", self.disconnected)
+
+
+    async def disconnected(self, event):
+        await self.reconnect()
 
 
     async def start(self, event):
@@ -68,9 +73,9 @@ class MinecraftXMPPBot(slixmpp.ClientXMPP):
 
             cmd = parts[0].lower()
             if cmd in ('help', '!help', '#help'):
-                    msg.reply('goto x y z\nlookat x y z\nstate\nscreenshot\ndig x y z\ninteract x y z').send()
+                    msg.reply('goto x y z\nlookat x y z\nstate\nscreenshot\ndig x y z\ninteract x y z\nrotate angle\nrelative-move dx dy dz').send()
 
-            elif cmd in ('goto', 'go-to', 'go_to', 'moveto', 'move-to', 'move_to', 'move'):
+            elif cmd in ('goto', 'go-to', 'go_to', 'moveto', 'move-to', 'move_to', 'move', 'position'):
                 if len(parts) == 4:
                     controller.move_to(float(parts[1]), float(parts[2]), float(parts[3]))
                     msg.reply('ok').send()
@@ -82,14 +87,21 @@ class MinecraftXMPPBot(slixmpp.ClientXMPP):
                     controller.relative_move(float(parts[1]), float(parts[2]), float(parts[3]))
                     msg.reply('ok').send()
                 else:
-                    print('x, y or z missing for goto')
+                    print('x, y or z missing for relmove')
 
             elif cmd in ('look-at', 'lookat', 'look_at'):
                 if len(parts) == 4:
                     controller.look_at(float(parts[1]), float(parts[2]), float(parts[3]))
                     msg.reply('ok').send()
                 else:
-                    print('x, y or z missing for goto')
+                    print('x, y or z missing for look-at')
+
+            elif cmd in ('rotate', ):
+                if len(parts) == 2:
+                    controller.rotate(float(parts[1]))
+                    msg.reply('ok').send()
+                else:
+                    print('angle missing for rotate')
 
             elif cmd == 'state':
                 s = controller.state()

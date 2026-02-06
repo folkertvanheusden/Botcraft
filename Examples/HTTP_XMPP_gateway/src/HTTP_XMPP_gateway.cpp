@@ -104,6 +104,25 @@ std::optional<std::tuple<int, int, int> > get_coordinate(const httplib::Request 
 	return { };
 }
 
+std::optional<double> get_angle(const httplib::Request &req)
+{
+	try
+	{
+		double a = std::stod(req.get_param_value("angle"));
+		return { a };
+	}
+	catch (const std::invalid_argument&)
+	{
+		printf("dig: invalid argument\n");
+	}
+	catch (const std::out_of_range&)
+	{
+		printf("dig: argument out of range\n");
+	}
+
+	return { };
+}
+
 HTTP_XMPP_gateway::HTTP_XMPP_gateway(const bool use_renderer_, std::pair<int, int> resolution) :
 	TemplatedBehaviourClient<HTTP_XMPP_gateway>(use_renderer_, resolution)
 {
@@ -151,6 +170,16 @@ HTTP_XMPP_gateway::HTTP_XMPP_gateway(const bool use_renderer_, std::pair<int, in
 				    if (pos.has_value()) {
 					printf("HTTP[goto]: %d,%d,%d\n", std::get<0>(pos.value()), std::get<1>(pos.value()), std::get<2>(pos.value()));
 					CmdGoTo(std::get<0>(pos.value()), std::get<1>(pos.value()), std::get<2>(pos.value()));
+				    }
+			    });
+
+		    svr.Post("/rotate", [&](const auto& req, auto& res) {
+				    auto angle = get_angle(req);
+				    if (angle.has_value()) {
+					printf("HTTP[rotate]: %f\n", angle.value());
+			                std::shared_ptr<LocalPlayer> local_player = entity_manager->GetLocalPlayer();
+					double pitch = local_player->GetYaw() + angle.value();
+					local_player->SetYaw(pitch);
 				    }
 			    });
 

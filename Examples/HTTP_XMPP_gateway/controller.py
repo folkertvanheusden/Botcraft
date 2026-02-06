@@ -20,6 +20,9 @@ def look_at(x, y, z):
 def move_to(x, y, z):
     print(requests.post(base_url + 'goto', data={ 'x': x, 'y': y, 'z': z }))
 
+def rotate(a):
+    print(requests.post(base_url + 'rotate', data={ 'angle': a }))
+
 def relative_move(dx, dy, dz):
     s = state()
     move_to(s['x'] + dx, s['y'] + dy, s['z'] + dz)
