@@ -21,6 +21,13 @@
 using namespace Botcraft;
 using namespace ProtocolCraft;
 
+#if defined(NDEBUG)
+#define MIN_SLEEP 29000
+#define MAX_SLEEP 301000
+#else
+#define MIN_SLEEP 2000
+#define MAX_SLEEP 3000
+#endif
 
 void set_thread_name(const std::string & name)
 {
@@ -305,7 +312,7 @@ HTTP_XMPP_gateway::HTTP_XMPP_gateway(const bool use_renderer_, std::pair<int, in
 
 			bool first = true;
 			for(;;) {
-				int sleep_time = (first == false ? rand() % 300000 : 0) + 29000;
+				int sleep_time = (first == false ? rand() % MAX_SLEEP : 0) + MIN_SLEEP;
 				first = false;
 				printf("Sleeping for %.3f seconds\n", sleep_time / 1000.);
 				uint64_t until_bored = GetMs() + sleep_time;
