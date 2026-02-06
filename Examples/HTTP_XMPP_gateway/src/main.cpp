@@ -64,6 +64,7 @@ int main(int argc, char* argv[])
         client.Connect(args.address, args.login);
 
         client.RunBehaviourUntilClosed();
+        LOG_INFO("Terminating...");
 
         client.Disconnect();
 

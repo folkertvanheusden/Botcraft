@@ -2,6 +2,7 @@
 
 #include <condition_variable>
 #include <mutex>
+#include <set>
 #include <thread>
 #include <vector>
 
@@ -30,11 +31,16 @@ protected:
 #endif
 
     void ProcessChatMsg(const std::vector<std::string>& splitted_msg);
-    void CmdGoTo(int x, int y, int z);
+    bool CmdGoTo(int x, int y, int z, int timeout);
     void CmdDig(int x, int y, int z);
     void CmdInteract(int x, int y, int z);
 
-    std::thread *http_handler { nullptr };
+    std::thread *http_handler  { nullptr };
+    std::thread *brain_handler { nullptr };
+
+    std::atomic_bool finished_walking { false };
+    std::set<std::tuple<int, int, int> > seen;
+
     std::mutex   screenshot_lock;
     std::condition_variable  screenshot_cv;
     std::vector<uint8_t> screenshot_pixels;

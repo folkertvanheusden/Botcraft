@@ -6,6 +6,7 @@
 #include <iterator>
 #include <png.h>
 #include <sstream>
+#include <sys/time.h>
 
 #include "botcraft/Game/World/World.hpp"
 #include "botcraft/Game/Entities/EntityManager.hpp"
@@ -20,6 +21,16 @@
 using namespace Botcraft;
 using namespace ProtocolCraft;
 
+
+void set_thread_name(const std::string & name)
+{
+        std::string full_name = "IV:" + name;
+
+        if (full_name.length() > 15)
+                full_name = full_name.substr(0, 15);
+
+        pthread_setname_np(pthread_self(), full_name.c_str());
+}
 
 void libpng_error_handler(png_structp png, png_const_charp msg)
 {
@@ -123,6 +134,14 @@ std::optional<double> get_angle(const httplib::Request &req)
 	return { };
 }
 
+uint64_t GetMs()
+{
+        timeval tv { };
+        gettimeofday(&tv, nullptr);
+
+        return tv.tv_sec * 1000 + tv.tv_usec / 1000;
+}
+
 HTTP_XMPP_gateway::HTTP_XMPP_gateway(const bool use_renderer_, std::pair<int, int> resolution) :
 	TemplatedBehaviourClient<HTTP_XMPP_gateway>(use_renderer_, resolution)
 {
@@ -140,24 +159,32 @@ HTTP_XMPP_gateway::HTTP_XMPP_gateway(const bool use_renderer_, std::pair<int, in
     std::cout << "    Screen shot:\n";
     std::cout << "        name screenshot\n";
 
+    srand(GetMs());
+
+    std::atomic_uint64_t latest_action = GetMs();
+
     http_handler = new std::thread([&] {
+		    set_thread_name("HTTP_handler");
 		    httplib::Server svr;
 
 		    svr.Post("/say", [&](const auto& req, auto& res) {
+					latest_action = GetMs();
 					std::string what = req.get_param_value("text");
 					printf("HTTP[say]: %s\n", what.c_str());
 					SendChatMessage(what);
 			    });
 
 		    svr.Post("/interact", [&](const auto& req, auto& res) {
-				    auto pos = get_coordinate(req);
-				    if (pos.has_value()) {
-					printf("HTTP[interact]: %d,%d,%d\n", std::get<0>(pos.value()), std::get<1>(pos.value()), std::get<2>(pos.value()));
-					CmdInteract(std::get<0>(pos.value()), std::get<1>(pos.value()), std::get<2>(pos.value()));
-				    }
+					latest_action = GetMs();
+					auto pos = get_coordinate(req);
+					if (pos.has_value()) {
+						printf("HTTP[interact]: %d,%d,%d\n", std::get<0>(pos.value()), std::get<1>(pos.value()), std::get<2>(pos.value()));
+						CmdInteract(std::get<0>(pos.value()), std::get<1>(pos.value()), std::get<2>(pos.value()));
+					}
 			    });
 
 		    svr.Post("/dig", [&](const auto& req, auto& res) {
+				    latest_action = GetMs();
 				    auto pos = get_coordinate(req);
 				    if (pos.has_value()) {
 					printf("HTTP[dig]: %d,%d,%d\n", std::get<0>(pos.value()), std::get<1>(pos.value()), std::get<2>(pos.value()));
@@ -166,14 +193,16 @@ HTTP_XMPP_gateway::HTTP_XMPP_gateway(const bool use_renderer_, std::pair<int, in
 			    });
 
 		    svr.Post("/goto", [&](const auto& req, auto& res) {
+				    latest_action = GetMs();
 				    auto pos = get_coordinate(req);
 				    if (pos.has_value()) {
 					printf("HTTP[goto]: %d,%d,%d\n", std::get<0>(pos.value()), std::get<1>(pos.value()), std::get<2>(pos.value()));
-					CmdGoTo(std::get<0>(pos.value()), std::get<1>(pos.value()), std::get<2>(pos.value()));
+					CmdGoTo(std::get<0>(pos.value()), std::get<1>(pos.value()), std::get<2>(pos.value()), -1);
 				    }
 			    });
 
 		    svr.Post("/rotate", [&](const auto& req, auto& res) {
+				    latest_action = GetMs();
 				    auto angle = get_angle(req);
 				    if (angle.has_value()) {
 					printf("HTTP[rotate]: %f\n", angle.value());
@@ -184,6 +213,7 @@ HTTP_XMPP_gateway::HTTP_XMPP_gateway(const bool use_renderer_, std::pair<int, in
 			    });
 
 		    svr.Post("/look-at", [&](const auto& req, auto& res) {
+				    latest_action = GetMs();
 				    auto pos = get_coordinate(req);
 				    if (pos.has_value()) {
 					printf("HTTP[look-at]: %d,%d,%d\n", std::get<0>(pos.value()), std::get<1>(pos.value()), std::get<2>(pos.value()));
@@ -193,6 +223,7 @@ HTTP_XMPP_gateway::HTTP_XMPP_gateway(const bool use_renderer_, std::pair<int, in
 			    });
 
 		    svr.Get("/state", [&](const httplib::Request &req, httplib::Response &res) {
+				    latest_action = GetMs();
 				    std::shared_ptr<LocalPlayer> local_player = entity_manager->GetLocalPlayer();
 
 				    std::string state = "{ \"x\": " + std::to_string(local_player->GetX()) + ", " +
@@ -223,6 +254,7 @@ HTTP_XMPP_gateway::HTTP_XMPP_gateway(const bool use_renderer_, std::pair<int, in
 		    svr.Get("/screenshot", [&](const httplib::Request &req, httplib::Response &res) {
 					if (!rendering_manager)
 						return;
+				        latest_action = GetMs();
 				        printf("Wait for screenshot...\n");
 				        rendering_manager->Unpause();
 					ClearScreenshot();
@@ -261,12 +293,70 @@ HTTP_XMPP_gateway::HTTP_XMPP_gateway(const bool use_renderer_, std::pair<int, in
 
 		    svr.listen("0.0.0.0", 8080);
 	    });
+
+    brain_handler = new std::thread([&] {
+		        set_thread_name("brain_handler");
+                        for(;;) {
+                                if (entity_manager && entity_manager->GetLocalPlayer())
+                                        break;
+                                printf("Waiting to get ready...\n");
+                                usleep(101000);
+                        }
+
+			bool first = true;
+			for(;;) {
+				int sleep_time = (first == false ? rand() % 300000 : 0) + 29000;
+				first = false;
+				printf("Sleeping for %.3f seconds\n", sleep_time / 1000.);
+				uint64_t until_bored = GetMs() + sleep_time;
+				do {
+					usleep(101000);
+				}
+				while(GetMs() < until_bored);
+
+				printf("bored!\n");
+				int activity_time = (rand() % 150000) + 1;
+				uint64_t max_until = activity_time + GetMs();
+				printf("Walking around for %.3f seconds\n", activity_time / 1000.);
+				while(GetMs() < max_until) {
+					auto local_player = entity_manager->GetLocalPlayer();
+
+					int x = local_player->GetX();
+					int y = local_player->GetY();
+					int z = local_player->GetZ();
+					int newx = 0, newy = 0, newz = 0;
+					bool ok = false;
+					for(int i=0; i<16; i++) {
+						newx = x + (rand() % 200) - 100;
+						newy = y + (rand() %   5) -   1;
+						newz = z + (rand() % 200) - 100;
+						if (seen.find({ newx, newy, newz }) == seen.end()) {
+							ok = true;
+							break;
+						}
+					}
+
+					if (!ok) {
+						printf("No new place to go to\n");
+						break;
+					}
+printf("%d %d %d\n", newx, newy, newz);
+					CmdGoTo(newx, newy, newz, 25000);
+				        CmdInteract(local_player->GetX() + (rand() % 3) - 1, local_player->GetY() + (rand() % 3) - 1, local_player->GetZ() + (rand() % 3) - 1);
+				}
+
+				latest_action = GetMs();
+			}
+	    });
 }
 
 HTTP_XMPP_gateway::~HTTP_XMPP_gateway()
 {
 	http_handler->join();
 	delete http_handler;
+
+	brain_handler->join();
+	delete brain_handler;
 }
 
 #if PROTOCOL_VERSION < 759 /* < 1.19 */
@@ -369,7 +459,7 @@ void HTTP_XMPP_gateway::CmdInteract(int x, int y, int z)
         SetBehaviourTree(tree);
 }
 
-void HTTP_XMPP_gateway::CmdGoTo(int x, int y, int z)
+bool HTTP_XMPP_gateway::CmdGoTo(int x, int y, int z, int timeout)
 {
         float speed_multiplier = 1.0f;
         Position target_position = Position(x, y, z);
@@ -388,14 +478,28 @@ void HTTP_XMPP_gateway::CmdGoTo(int x, int y, int z)
                     .leaf("go to lambda", [=](HTTP_XMPP_gateway& c) { return GoTo(c, target_position, 0, 0, 0, true, false, speed_multiplier); })
                     .leaf("go to function", GoTo, target_position, 0, 0, 0, true, false, speed_multiplier)
                     .leaf("go to std::bind", std::bind(GoTo, std::placeholders::_1, target_position, 0, 0, 0, true, false, speed_multiplier))
-                    // If goto fails, say something in chat
-                    .leaf(Say, "Pathfinding failed :(")
                 .end()
                 // Switch back to empty behaviour
-                .leaf([](HTTP_XMPP_gateway& c) { c.SetBehaviourTree(nullptr); return Status::Success; })
+                .leaf([&](HTTP_XMPP_gateway& c) { c.SetBehaviourTree(nullptr); finished_walking = true; return Status::Success; })
             .end();
 
         SetBehaviourTree(tree);
+
+	if (timeout < 0)  // negative is async
+		return true;
+
+        auto start = GetMs();
+        while(!finished_walking && GetMs() < start + timeout)
+                usleep(101000);  // TODO: cv
+
+        SetBehaviourTree(nullptr);
+
+        if (finished_walking)
+                seen.insert({ x, y, z });
+        else
+                printf("Walking to %d,%d,%d timed out\n", x, y, z);
+
+        return finished_walking;
 }
 
 void HTTP_XMPP_gateway::ProcessChatMsg(const std::vector<std::string>& splitted_msg)
@@ -419,7 +523,7 @@ void HTTP_XMPP_gateway::ProcessChatMsg(const std::vector<std::string>& splitted_
 
 	try
 	{
-		CmdGoTo(std::stoi(splitted_msg[2]), std::stoi(splitted_msg[3]), std::stoi(splitted_msg[4]));
+		CmdGoTo(std::stoi(splitted_msg[2]), std::stoi(splitted_msg[3]), std::stoi(splitted_msg[4]), 15000);
 	}
 	catch (const std::invalid_argument&)
 	{
