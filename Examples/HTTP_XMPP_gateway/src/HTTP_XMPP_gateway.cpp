@@ -358,7 +358,7 @@ HTTP_XMPP_gateway::HTTP_XMPP_gateway(const bool use_renderer_, std::pair<int, in
 
 					if (summon.empty() == false) {
 					       uint64_t now = GetMs();
-					       if (now - prev_summon >= 1000) {
+					       if (now - prev_summon >= 31000) {
 						       SendChatCommand(summon);
 						       prev_summon = now;
 						       LOG_INFO("Summon");
