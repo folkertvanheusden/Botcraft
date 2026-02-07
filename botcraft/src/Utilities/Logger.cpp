@@ -106,6 +106,10 @@ namespace Botcraft
         std::lock_guard<std::mutex> lock(thread_mutex);
         thread_names[std::this_thread::get_id()] = name;
 
+#ifdef linux
+	pthread_setname_np(pthread_self(), name.c_str());
+#endif
+
         thread_local struct ThreadExiter
         {
             ~ThreadExiter()
@@ -119,6 +123,10 @@ namespace Botcraft
     {
         std::lock_guard<std::mutex> lock(thread_mutex);
         thread_names[id] = name;
+
+#ifdef linux
+	pthread_setname_np(pthread_self(), name.c_str());
+#endif
     }
 
     std::string Logger::GetThreadName(const std::thread::id id)
