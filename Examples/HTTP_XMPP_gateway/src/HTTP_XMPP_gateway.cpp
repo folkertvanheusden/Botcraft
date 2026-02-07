@@ -12,7 +12,7 @@
 #include "botcraft/Game/Entities/EntityManager.hpp"
 #include "botcraft/Game/Entities/LocalPlayer.hpp"
 #include "botcraft/Network/NetworkManager.hpp"
-
+#include "botcraft/Utilities/Logger.hpp"
 #include "botcraft/AI/BehaviourTree.hpp"
 #include "botcraft/AI/Tasks/AllTasks.hpp"
 
@@ -112,11 +112,11 @@ std::optional<std::tuple<int, int, int> > get_coordinate(const httplib::Request 
 	}
 	catch (const std::invalid_argument&)
 	{
-		printf("dig: invalid argument\n");
+		printf("invalid argument\n");
 	}
 	catch (const std::out_of_range&)
 	{
-		printf("dig: argument out of range\n");
+		printf("argument out of range\n");
 	}
 
 	return { };
@@ -131,11 +131,11 @@ std::optional<double> get_angle(const httplib::Request &req)
 	}
 	catch (const std::invalid_argument&)
 	{
-		printf("dig: invalid argument\n");
+		printf("invalid argument\n");
 	}
 	catch (const std::out_of_range&)
 	{
-		printf("dig: argument out of range\n");
+		printf("argument out of range\n");
 	}
 
 	return { };
@@ -177,7 +177,7 @@ HTTP_XMPP_gateway::HTTP_XMPP_gateway(const bool use_renderer_, std::pair<int, in
 		    svr.Post("/say", [&](const auto& req, auto& res) {
 					latest_action = GetMs();
 					std::string what = req.get_param_value("text");
-					printf("HTTP[say]: %s\n", what.c_str());
+					LOG_INFO("HTTP[say]: " << what);
 					SendChatMessage(what);
 			    });
 
@@ -307,7 +307,7 @@ HTTP_XMPP_gateway::HTTP_XMPP_gateway(const bool use_renderer_, std::pair<int, in
                         for(;;) {
                                 if (entity_manager && entity_manager->GetLocalPlayer())
                                         break;
-                                printf("Waiting to get ready...\n");
+                                LOG_INFO("Waiting to get ready...");
                                 usleep(101000);
                         }
 
@@ -322,7 +322,7 @@ HTTP_XMPP_gateway::HTTP_XMPP_gateway(const bool use_renderer_, std::pair<int, in
 				}
 				while(GetMs() < until_bored);
 
-				printf("bored!\n");
+				LOG_INFO("bored!");
 				int activity_time = (rand() % 150000) + 1;
 				uint64_t max_until = activity_time + GetMs();
 				printf("Walking around for %.3f seconds\n", activity_time / 1000.);
@@ -345,11 +345,15 @@ HTTP_XMPP_gateway::HTTP_XMPP_gateway(const bool use_renderer_, std::pair<int, in
 					}
 
 					if (!ok) {
-						printf("No new place to go to\n");
+						LOG_INFO("No new place to go to");
 						break;
 					}
-printf("%d %d %d\n", newx, newy, newz);
-					CmdGoTo(newx, newy, newz, 25000);
+
+                                        if (CmdGoTo(newx, newy, newz, 25000)) {
+                                               LOG_INFO("Summon a bird");
+                                               SendChatCommand("summon bird");
+                                        }
+
 				        CmdInteract(local_player->GetX() + (rand() % 3) - 1, local_player->GetY() + (rand() % 3) - 1, local_player->GetZ() + (rand() % 3) - 1);
 				}
 
