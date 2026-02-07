@@ -16,7 +16,7 @@
 class HTTP_XMPP_gateway : public Botcraft::TemplatedBehaviourClient<HTTP_XMPP_gateway>
 {
 public:
-    HTTP_XMPP_gateway(const bool use_renderer_, std::pair<int, int> resolution);
+    HTTP_XMPP_gateway(const bool use_renderer_, std::pair<int, int> resolution, int http_port);
     ~HTTP_XMPP_gateway();
 
     void SetScreenshot(const int w, const int h, const std::vector<uint8_t> & pixels);
@@ -35,6 +35,7 @@ protected:
     void CmdDig(int x, int y, int z);
     void CmdInteract(int x, int y, int z);
 
+    int http_port { 8080 };
     std::thread *http_handler  { nullptr };
     std::thread *brain_handler { nullptr };
 

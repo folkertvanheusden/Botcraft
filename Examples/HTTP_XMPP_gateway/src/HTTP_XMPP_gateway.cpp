@@ -149,8 +149,8 @@ uint64_t GetMs()
         return tv.tv_sec * 1000 + tv.tv_usec / 1000;
 }
 
-HTTP_XMPP_gateway::HTTP_XMPP_gateway(const bool use_renderer_, std::pair<int, int> resolution) :
-	TemplatedBehaviourClient<HTTP_XMPP_gateway>(use_renderer_, resolution)
+HTTP_XMPP_gateway::HTTP_XMPP_gateway(const bool use_renderer_, std::pair<int, int> resolution, int http_port) :
+	TemplatedBehaviourClient<HTTP_XMPP_gateway>(use_renderer_, resolution), http_port(http_port)
 {
     std::cout << "Known commands:\n";
     std::cout << "    Pathfinding to position:\n";
@@ -298,7 +298,8 @@ HTTP_XMPP_gateway::HTTP_XMPP_gateway(const bool use_renderer_, std::pair<int, in
 					);
 			    });
 
-		    svr.listen("0.0.0.0", 8080);
+		    printf("Starting HTTP server on port %d\n", this->http_port);
+		    svr.listen("0.0.0.0", this->http_port);
 	    });
 
     brain_handler = new std::thread([&] {

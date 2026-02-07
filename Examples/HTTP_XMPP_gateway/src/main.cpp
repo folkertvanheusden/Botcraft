@@ -21,6 +21,7 @@ struct Args
     std::string login = "";
     int width = 800;
     int height = 600;
+    int http_port = 8080;
 
     int return_code = 0;
 };
@@ -57,7 +58,7 @@ int main(int argc, char* argv[])
             }
         }
 
-        HTTP_XMPP_gateway client(true, { args.width, args.height });
+        HTTP_XMPP_gateway client(true, { args.width, args.height }, args.http_port);
         client.SetAutoRespawn(true);
 
         LOG_INFO("Starting connection process");
@@ -116,6 +117,19 @@ Args ParseCommandLine(int argc, char* argv[])
             else
             {
                 LOG_FATAL("--login requires an argument");
+                args.return_code = 1;
+                return args;
+            }
+        }
+        else if (arg == "--http-port")
+        {
+            if (i + 1 < argc)
+            {
+                args.http_port = atoi(argv[++i]);
+            }
+            else
+            {
+                LOG_FATAL("--http-port requires an argument");
                 args.return_code = 1;
                 return args;
             }
