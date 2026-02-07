@@ -21,7 +21,9 @@
 using namespace Botcraft;
 using namespace ProtocolCraft;
 
-#if defined(NDEBUG)
+// #define TURBO
+
+#if defined(NDEBUG) && !defined(TURBO)
 #define MIN_SLEEP 29000
 #define MAX_SLEEP 301000
 #else
@@ -351,14 +353,24 @@ HTTP_XMPP_gateway::HTTP_XMPP_gateway(const bool use_renderer_, std::pair<int, in
 						break;
 					}
 
-                                        if (CmdGoTo(newx, newy, newz, 25000)) {
+					std::string summon;
+                                        if (CmdGoTo(newx, newy, newz, 25000))
+						summon = "summon minecraft:bird ~ ~ ~";
+					else {
+						if (local_player->IsInWater())
+						       summon = "summon minecraft:tropical_fish ~ ~ ~";
+						else
+						       summon = "summon minecraft:cat ~ ~ ~";
+					}
+
+					if (summon.empty() == false) {
 					       uint64_t now = GetMs();
 					       if (now - prev_summon >= 1000) {
-						       LOG_INFO("Summon a bird");
-						       SendChatCommand("summon bird ~ ~ ~");
+						       SendChatCommand(summon);
 						       prev_summon = now;
+						       LOG_INFO("Summon");
 					       }
-                                        }
+					}
 
 				        CmdInteract(local_player->GetX() + (rand() % 3) - 1, local_player->GetY() + (rand() % 3) - 1, local_player->GetZ() + (rand() % 3) - 1);
 				}
