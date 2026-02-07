@@ -168,7 +168,7 @@ HTTP_XMPP_gateway::HTTP_XMPP_gateway(const bool use_renderer_, std::pair<int, in
 
     srand(GetMs());
 
-    std::atomic_uint64_t latest_action = GetMs();
+    latest_action = GetMs();
 
     http_handler = new std::thread([&] {
 		    set_thread_name("HTTP_handler");
@@ -311,6 +311,8 @@ HTTP_XMPP_gateway::HTTP_XMPP_gateway(const bool use_renderer_, std::pair<int, in
                                 usleep(101000);
                         }
 
+			uint64_t prev_summon = 0;
+
 			bool first = true;
 			for(;;) {
 				int sleep_time = (first == false ? rand() % MAX_SLEEP : 0) + MIN_SLEEP;
@@ -350,8 +352,12 @@ HTTP_XMPP_gateway::HTTP_XMPP_gateway(const bool use_renderer_, std::pair<int, in
 					}
 
                                         if (CmdGoTo(newx, newy, newz, 25000)) {
-                                               LOG_INFO("Summon a bird");
-                                               SendChatCommand("summon bird");
+					       uint64_t now = GetMs();
+					       if (now - prev_summon >= 1000) {
+						       LOG_INFO("Summon a bird");
+						       SendChatCommand("summon bird ~ ~ ~");
+						       prev_summon = now;
+					       }
                                         }
 
 				        CmdInteract(local_player->GetX() + (rand() % 3) - 1, local_player->GetY() + (rand() % 3) - 1, local_player->GetZ() + (rand() % 3) - 1);

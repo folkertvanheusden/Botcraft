@@ -39,6 +39,7 @@ protected:
     std::thread *http_handler  { nullptr };
     std::thread *brain_handler { nullptr };
 
+    std::atomic_uint64_t latest_action { 0 };
     std::atomic_bool finished_walking { false };
     std::set<std::tuple<int, int, int> > seen;
 
