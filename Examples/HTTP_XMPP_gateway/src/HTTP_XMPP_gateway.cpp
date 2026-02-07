@@ -342,15 +342,8 @@ HTTP_XMPP_gateway::HTTP_XMPP_gateway(const bool use_renderer_, std::pair<int, in
 						newx = x + (rand() % 200) - 100;
 						newy = y + (rand() %   5) -   1;
 						newz = z + (rand() % 200) - 100;
-						if (seen.find({ newx, newy, newz }) == seen.end()) {
+						if (seen.find({ newx, newy, newz }) == seen.end())
 							ok = true;
-							break;
-						}
-					}
-
-					if (!ok) {
-						LOG_INFO("No new place to go to");
-						break;
 					}
 
 					std::string summon;
