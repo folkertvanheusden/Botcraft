@@ -327,8 +327,9 @@ HTTP_XMPP_gateway::HTTP_XMPP_gateway(const bool use_renderer_, std::pair<int, in
 				while(GetMs() < until_bored);
 
 				LOG_INFO("bored!");
-				int activity_time = (rand() % 150000) + 1;
-				uint64_t max_until = activity_time + GetMs();
+				uint64_t prev_latest_action = latest_action;
+				int      activity_time      = (rand() % 150000) + 1;
+				uint64_t max_until          = activity_time + GetMs();
 				printf("Walking around for %.3f seconds\n", activity_time / 1000.);
 				while(GetMs() < max_until) {
 					auto local_player = entity_manager->GetLocalPlayer();
@@ -342,16 +343,12 @@ HTTP_XMPP_gateway::HTTP_XMPP_gateway(const bool use_renderer_, std::pair<int, in
 						newx = x + (rand() % 200) - 100;
 						newy = y + (rand() %   5) -   1;
 						newz = z + (rand() % 200) - 100;
-						if (seen.find({ newx, newy, newz }) == seen.end()) {
-							ok = true;
+						if (seen.find({ newx, newy, newz }) == seen.end())
 							break;
-						}
 					}
 
-					if (!ok) {
-						LOG_INFO("No new place to go to");
+					if (prev_latest_action != latest_action)
 						break;
-					}
 
 					std::string summon;
                                         if (CmdGoTo(newx, newy, newz, 25000))
