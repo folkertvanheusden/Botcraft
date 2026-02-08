@@ -33,7 +33,7 @@ protected:
     void ProcessChatMsg(const std::vector<std::string>& splitted_msg);
     bool CmdGoTo(int x, int y, int z, int timeout);
     void CmdDig(int x, int y, int z);
-    void CmdInteract(int x, int y, int z);
+    void CmdInteract(const Botcraft::Position & pos, int timeout);
 
     std::optional<Botcraft::Position> FindRandomLocation();
     std::optional<Botcraft::Position> FindObjectToInteract();

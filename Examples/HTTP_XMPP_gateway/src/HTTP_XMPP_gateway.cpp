@@ -168,7 +168,10 @@ std::optional<Position> HTTP_XMPP_gateway::FindRandomLocation()
 			break;
 	}
 
-	return { { newx, newy, newz } };
+	if (newx != x || newy != y || newz != z)
+		return { { newx, newy, newz } };
+
+	return { };
 }
 
 std::optional<Position> HTTP_XMPP_gateway::FindObjectToInteract()
@@ -243,7 +246,7 @@ HTTP_XMPP_gateway::HTTP_XMPP_gateway(const bool use_renderer_, std::pair<int, in
 					auto pos = get_coordinate(req);
 					if (pos.has_value()) {
 						printf("HTTP[interact]: %d,%d,%d\n", std::get<0>(pos.value()), std::get<1>(pos.value()), std::get<2>(pos.value()));
-						CmdInteract(std::get<0>(pos.value()), std::get<1>(pos.value()), std::get<2>(pos.value()));
+						CmdInteract(Position(std::get<0>(pos.value()), std::get<1>(pos.value()), std::get<2>(pos.value())), -1);
 					}
 			    });
 
@@ -387,6 +390,7 @@ HTTP_XMPP_gateway::HTTP_XMPP_gateway(const bool use_renderer_, std::pair<int, in
 				while(GetMs() < until_bored);
 
 				LOG_INFO("bored!");
+				Position prev_interaction_pos(0, 0, 0);
 				uint64_t prev_latest_action = latest_action;
 				int      activity_time      = (rand() % 150000) + 1;
 				uint64_t max_until          = activity_time + GetMs();
@@ -411,8 +415,10 @@ HTTP_XMPP_gateway::HTTP_XMPP_gateway(const bool use_renderer_, std::pair<int, in
 					}
 
 					auto object = FindObjectToInteract();
-					if (object.has_value())
-						CmdInteract(object.value().x, object.value().y, object.value().z);
+					if (object.has_value() && object.value() != prev_interaction_pos) {
+						prev_interaction_pos = object.value();
+						CmdInteract(object.value(), 10000);
+					}
 				}
 
 				latest_action = GetMs();
@@ -502,10 +508,12 @@ void HTTP_XMPP_gateway::CmdDig(int x, int y, int z)
         SetBehaviourTree(tree);
 }
 
-void HTTP_XMPP_gateway::CmdInteract(int x, int y, int z)
+void HTTP_XMPP_gateway::CmdInteract(const Position & pos, int timeout)
 {
-	Position pos(x, y, z);
-	LOG_INFO("Interact at: " << pos);
+        LOG_INFO("Interact at: " << pos);
+
+	finished_walking = false;
+
         auto tree = Builder<HTTP_XMPP_gateway>("interact")
             // shortcut for composite<Sequence<HTTP_XMPP_gateway>>()
             .sequence()
@@ -516,41 +524,42 @@ void HTTP_XMPP_gateway::CmdInteract(int x, int y, int z)
                     .selector()
                         // Perform action using the data in the blackboard
                         .leaf("interact with block", InteractWithBlockBlackboard)
-                        // Say something if it fails
-                        .leaf(Say, "Interacting failed :(")
+			.leaf([&](HTTP_XMPP_gateway& c) { c.SetBehaviourTree(nullptr); finished_walking = true; return Status::Success; })
                     .end()
                     // Remove interaction position in the blackboard because
                     // we don't want to leave a mess (and to show how to do it)
                     .leaf(RemoveBlackboardData, "InteractWithBlock.pos")
                 .end()
                 // Switch back to empty behaviour
-                .leaf([](HTTP_XMPP_gateway& c) { c.SetBehaviourTree(nullptr); return Status::Success; })
+                .leaf([&](HTTP_XMPP_gateway& c) { c.SetBehaviourTree(nullptr); finished_walking = true; return Status::Success; })
             .end();
 
         SetBehaviourTree(tree);
+
+	if (timeout < 0)  // negative is async
+		return;
+
+        auto start = GetMs();
+        while(!finished_walking && GetMs() < start + timeout)
+                usleep(101000);  // TODO: cv
+
+        SetBehaviourTree(nullptr);
 }
 
 bool HTTP_XMPP_gateway::CmdGoTo(int x, int y, int z, int timeout)
 {
+	const bool sprint = true;
         float speed_multiplier = 1.0f;
         Position target_position = Position(x, y, z);
 
+	finished_walking = false;
+
         auto tree = Builder<HTTP_XMPP_gateway>("goto tree")
             .sequence()
-                // Perform the pathfinding in a Selector,
-                // so it exits as soon as one leaf
-                // returns success
                 .selector()
-                    // The next three lines do exactly the same,
-                    // they're only here to show the different
-                    // possibilities to create a leaf. Note that
-                    // only the lambda solution can use default
-                    // parameters values
-                    .leaf("go to lambda", [=](HTTP_XMPP_gateway& c) { return GoTo(c, target_position, 0, 0, 0, true, false, speed_multiplier); })
-                    .leaf("go to function", GoTo, target_position, 0, 0, 0, true, false, speed_multiplier)
-                    .leaf("go to std::bind", std::bind(GoTo, std::placeholders::_1, target_position, 0, 0, 0, true, false, speed_multiplier))
+                    .leaf("go to lambda", [=](HTTP_XMPP_gateway& c) { return GoTo(c, target_position, 0, 0, 0, true, sprint, speed_multiplier); })
+	            .leaf("fallback",     [&](HTTP_XMPP_gateway& c) { c.SetBehaviourTree(nullptr); finished_walking = true; return Status::Success; })
                 .end()
-                // Switch back to empty behaviour
                 .leaf([&](HTTP_XMPP_gateway& c) { c.SetBehaviourTree(nullptr); finished_walking = true; return Status::Success; })
             .end();
 
@@ -683,7 +692,7 @@ void HTTP_XMPP_gateway::ProcessChatMsg(const std::vector<std::string>& splitted_
 
         try
         {
-            CmdInteract(std::stoi(splitted_msg[2]), std::stoi(splitted_msg[3]), std::stoi(splitted_msg[4]));
+            CmdInteract(Position(std::stoi(splitted_msg[2]), std::stoi(splitted_msg[3]), std::stoi(splitted_msg[4])), -1);
         }
         catch (const std::invalid_argument&)
         {
