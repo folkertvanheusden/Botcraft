@@ -151,6 +151,61 @@ uint64_t GetMs()
         return tv.tv_sec * 1000 + tv.tv_usec / 1000;
 }
 
+std::optional<Position> HTTP_XMPP_gateway::FindRandomLocation()
+{
+	auto local_player = entity_manager->GetLocalPlayer();
+
+	int x = local_player->GetX();
+	int y = local_player->GetY();
+	int z = local_player->GetZ();
+	int newx = 0, newy = 0, newz = 0;
+	bool ok = false;
+	for(int i=0; i<16; i++) {
+		newx = x + (rand() % 200) - 100;
+		newy = y + (rand() %   5) -   1;
+		newz = z + (rand() % 200) - 100;
+		if (seen.find({ newx, newy, newz }) == seen.end())
+			break;
+	}
+
+	return { { newx, newy, newz } };
+}
+
+std::optional<Position> HTTP_XMPP_gateway::FindObjectToInteract()
+{
+	auto local_player = entity_manager->GetLocalPlayer();
+	int px = local_player->GetX();
+	int py = local_player->GetY();
+	int pz = local_player->GetZ();
+
+	for(int y=-1; y<2; y++) {
+		for(int x=-1; x<2; x++) {
+			for(int z=-1; z<2; z++) {
+				auto block = world->GetBlock(Position(x + px, y + py, z + pz));
+				if (!block)
+					continue;
+				if (block->IsHazardous() == false && block->IsSolid() == true)
+					return { { x + px, y + py, z + pz } };
+			}
+		}
+	}
+
+	return { };
+}
+
+bool HTTP_XMPP_gateway::Summon(const std::string & what)
+{
+	uint64_t now = GetMs();
+	if (now - prev_summon >= 31000) {
+		LOG_INFO("Summon: " << what);
+		SendChatCommand("summon " + what + " ~ ~ ~");
+		prev_summon = now;
+		return true;
+	}
+
+	return false;
+}
+
 HTTP_XMPP_gateway::HTTP_XMPP_gateway(const bool use_renderer_, std::pair<int, int> resolution, int http_port) :
 	TemplatedBehaviourClient<HTTP_XMPP_gateway>(use_renderer_, resolution), http_port(http_port)
 {
@@ -323,6 +378,11 @@ HTTP_XMPP_gateway::HTTP_XMPP_gateway(const bool use_renderer_, std::pair<int, in
 				uint64_t until_bored = GetMs() + sleep_time;
 				do {
 					usleep(101000);
+
+					if (go_now.exchange(false)) {
+						LOG_INFO("override sleep");
+						break;
+					}
 				}
 				while(GetMs() < until_bored);
 
@@ -332,44 +392,27 @@ HTTP_XMPP_gateway::HTTP_XMPP_gateway(const bool use_renderer_, std::pair<int, in
 				uint64_t max_until          = activity_time + GetMs();
 				printf("Walking around for %.3f seconds\n", activity_time / 1000.);
 				while(GetMs() < max_until) {
-					auto local_player = entity_manager->GetLocalPlayer();
-
-					int x = local_player->GetX();
-					int y = local_player->GetY();
-					int z = local_player->GetZ();
-					int newx = 0, newy = 0, newz = 0;
-					bool ok = false;
-					for(int i=0; i<16; i++) {
-						newx = x + (rand() % 200) - 100;
-						newy = y + (rand() %   5) -   1;
-						newz = z + (rand() % 200) - 100;
-						if (seen.find({ newx, newy, newz }) == seen.end())
-							break;
-					}
+					auto new_position = FindRandomLocation();
+					if (new_position.has_value() == false)
+						break;
 
 					if (prev_latest_action != latest_action)
 						break;
 
 					std::string summon;
-                                        if (CmdGoTo(newx, newy, newz, 25000))
-						summon = "summon minecraft:bird ~ ~ ~";
+                                        if (CmdGoTo(new_position.value().x, new_position.value().y, new_position.value().z, 25000))
+						Summon("minecraft:bird");
 					else {
+						auto local_player = entity_manager->GetLocalPlayer();
 						if (local_player->IsInWater())
-						       summon = "summon minecraft:tropical_fish ~ ~ ~";
+						       Summon("minecraft:tropical_fish");
 						else
-						       summon = "summon minecraft:cat ~ ~ ~";
+						       Summon("minecraft:cat");
 					}
 
-					if (summon.empty() == false) {
-					       uint64_t now = GetMs();
-					       if (now - prev_summon >= 31000) {
-						       SendChatCommand(summon);
-						       prev_summon = now;
-						       LOG_INFO("Summon");
-					       }
-					}
-
-				        CmdInteract(local_player->GetX() + (rand() % 3) - 1, local_player->GetY() + (rand() % 3) - 1, local_player->GetZ() + (rand() % 3) - 1);
+					auto object = FindObjectToInteract();
+					if (object.has_value())
+						CmdInteract(object.value().x, object.value().y, object.value().z);
 				}
 
 				latest_action = GetMs();
@@ -462,6 +505,7 @@ void HTTP_XMPP_gateway::CmdDig(int x, int y, int z)
 void HTTP_XMPP_gateway::CmdInteract(int x, int y, int z)
 {
 	Position pos(x, y, z);
+	LOG_INFO("Interact at: " << pos);
         auto tree = Builder<HTTP_XMPP_gateway>("interact")
             // shortcut for composite<Sequence<HTTP_XMPP_gateway>>()
             .sequence()
@@ -524,7 +568,7 @@ bool HTTP_XMPP_gateway::CmdGoTo(int x, int y, int z, int timeout)
         if (finished_walking)
                 seen.insert({ x, y, z });
         else
-                printf("Walking to %d,%d,%d timed out\n", x, y, z);
+                LOG_INFO("Walking to " << Position(x, y, z) << " timed out");
 
         return finished_walking;
 }
@@ -606,10 +650,8 @@ void HTTP_XMPP_gateway::ProcessChatMsg(const std::vector<std::string>& splitted_
 
         SetBehaviourTree(tree);
     }
-    else if (splitted_msg[1] == "terminate") {
-	    should_be_closed = true;  // TODO
-	    exit(0);
-    }
+    else if (splitted_msg[1] == "go")
+	    go_now = true;
     else if (splitted_msg[1] == "dig")
     {
         if (splitted_msg.size() < 5)
