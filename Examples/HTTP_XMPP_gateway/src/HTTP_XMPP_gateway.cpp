@@ -212,20 +212,6 @@ bool HTTP_XMPP_gateway::Summon(const std::string & what)
 HTTP_XMPP_gateway::HTTP_XMPP_gateway(const bool use_renderer_, std::pair<int, int> resolution, int http_port) :
 	TemplatedBehaviourClient<HTTP_XMPP_gateway>(use_renderer_, resolution), http_port(http_port)
 {
-    std::cout << "Known commands:\n";
-    std::cout << "    Pathfinding to position:\n";
-    std::cout << "        name goto x y z (speed_multiplier=1.0)\n";
-    std::cout << "    Stop what you're doing:\n";
-    std::cout << "        name stop\n";
-    std::cout << "    Place a block:\n";
-    std::cout << "        name place_block minecraft:item x y z\n";
-    std::cout << "    Break a block:\n";
-    std::cout << "        name dig x y z\n";
-    std::cout << "    Interact (right click) a block:\n";
-    std::cout << "        name interact x y z\n";
-    std::cout << "    Screen shot:\n";
-    std::cout << "        name screenshot\n";
-
     srand(GetMs());
 
     latest_action = GetMs();
@@ -591,28 +577,7 @@ void HTTP_XMPP_gateway::ProcessChatMsg(const std::vector<std::string>& splitted_
 
     if (splitted_msg[1] == "help")
     {
-	    SendChatMessage("goto / place_block / dig / interact / screenshot");
-    }
-    else if (splitted_msg[1] == "goto")
-    {
-        if (splitted_msg.size() < 5)
-        {
-            SendChatMessage("Usage: [BotName] [goto] [x] [y] [z] [speed_multiplier]");
-            return;
-        }
-
-	try
-	{
-		CmdGoTo(std::stoi(splitted_msg[2]), std::stoi(splitted_msg[3]), std::stoi(splitted_msg[4]), 15000);
-	}
-	catch (const std::invalid_argument&)
-	{
-		return;
-	}
-	catch (const std::out_of_range&)
-	{
-		return;
-	}
+	    SendChatMessage("stop / go / screenshot");
     }
     else if (splitted_msg[1] == "screenshot")
     {
@@ -626,81 +591,8 @@ void HTTP_XMPP_gateway::ProcessChatMsg(const std::vector<std::string>& splitted_
         // Stop any running behaviour
         SetBehaviourTree(nullptr);
     }
-    else if (splitted_msg[1] == "place_block")
-    {
-        if (splitted_msg.size() < 6)
-        {
-            SendChatMessage("Usage: [BotName] [place_block] [item] [x] [y] [z]");
-            return;
-        }
-        const std::string& item = splitted_msg[2];
-        Position pos;
-        try
-        {
-            pos = Position(std::stoi(splitted_msg[3]), std::stoi(splitted_msg[4]), std::stoi(splitted_msg[5]));
-        }
-        catch (const std::invalid_argument&)
-        {
-            return;
-        }
-        catch (const std::out_of_range&)
-        {
-            return;
-        }
-        LOG_INFO("Asked to place a block at " << pos << " (" << item << ")");
-
-        auto tree = Builder<HTTP_XMPP_gateway>("place block")
-            // shortcut for composite<Sequence<HTTP_XMPP_gateway>>()
-            .sequence()
-                .succeeder().leaf(PlaceBlock, item, pos, PlayerDiggingFace::Up, true, true, true)
-                // Switch back to empty behaviour
-                .leaf([](HTTP_XMPP_gateway& c) { c.SetBehaviourTree(nullptr); return Status::Success; })
-            .end();
-
-        SetBehaviourTree(tree);
-    }
     else if (splitted_msg[1] == "go")
+    {
 	    go_now = true;
-    else if (splitted_msg[1] == "dig")
-    {
-        if (splitted_msg.size() < 5)
-        {
-            SendChatMessage("Usage: [BotName] [dig] [x] [y] [z]");
-            return;
-        }
-
-        try
-        {
-	    CmdDig(std::stoi(splitted_msg[2]), std::stoi(splitted_msg[3]), std::stoi(splitted_msg[4]));
-        }
-        catch (const std::invalid_argument&)
-        {
-            return;
-        }
-        catch (const std::out_of_range&)
-        {
-            return;
-        }
-    }
-    else if (splitted_msg[1] == "interact")
-    {
-        if (splitted_msg.size() < 5)
-        {
-            SendChatMessage("Usage: [BotName] [interact] [x] [y] [z]");
-            return;
-        }
-
-        try
-        {
-            CmdInteract(Position(std::stoi(splitted_msg[2]), std::stoi(splitted_msg[3]), std::stoi(splitted_msg[4])), -1);
-        }
-        catch (const std::invalid_argument&)
-        {
-            return;
-        }
-        catch (const std::out_of_range&)
-        {
-            return;
-        }
     }
 }
