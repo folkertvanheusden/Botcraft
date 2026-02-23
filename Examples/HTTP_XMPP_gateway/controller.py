@@ -1,3 +1,5 @@
+# Written by Folkert van Heusden <folkert@komputilo.nl>
+
 import random
 import requests
 import time

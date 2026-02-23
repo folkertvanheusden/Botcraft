@@ -1,5 +1,7 @@
 #! /usr/bin/env python3
 
+# Written by Folkert van Heusden <folkert@komputilo.nl>
+
 from argparse import ArgumentParser
 from getpass import getpass
 
