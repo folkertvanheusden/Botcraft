@@ -33,14 +33,20 @@ protected:
     void ProcessChatMsg(const std::vector<std::string>& splitted_msg);
     bool CmdGoTo(int x, int y, int z, int timeout);
     void CmdDig(int x, int y, int z);
-    void CmdInteract(int x, int y, int z);
+    void CmdInteract(const Botcraft::Position & pos, int timeout);
+
+    std::optional<Botcraft::Position> FindRandomLocation();
+    std::optional<Botcraft::Position> FindObjectToInteract();
+    bool Summon(const std::string & what);
 
     int http_port { 8080 };
     std::thread *http_handler  { nullptr };
     std::thread *brain_handler { nullptr };
 
+    uint64_t prev_summon { 0 };
     std::atomic_uint64_t latest_action { 0 };
     std::atomic_bool finished_walking { false };
+    std::atomic_bool go_now { false };
     std::set<std::tuple<int, int, int> > seen;
 
     std::mutex   screenshot_lock;

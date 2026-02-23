@@ -151,23 +151,67 @@ uint64_t GetMs()
         return tv.tv_sec * 1000 + tv.tv_usec / 1000;
 }
 
+std::optional<Position> HTTP_XMPP_gateway::FindRandomLocation()
+{
+	auto local_player = entity_manager->GetLocalPlayer();
+
+	int x = local_player->GetX();
+	int y = local_player->GetY();
+	int z = local_player->GetZ();
+	int newx = 0, newy = 0, newz = 0;
+	bool ok = false;
+	for(int i=0; i<16; i++) {
+		newx = x + (rand() % 200) - 100;
+		newy = y + (rand() %   5) -   1;
+		newz = z + (rand() % 200) - 100;
+		if (seen.find({ newx, newy, newz }) == seen.end())
+			break;
+	}
+
+	if (newx != x || newy != y || newz != z)
+		return { { newx, newy, newz } };
+
+	return { };
+}
+
+std::optional<Position> HTTP_XMPP_gateway::FindObjectToInteract()
+{
+	auto local_player = entity_manager->GetLocalPlayer();
+	int px = local_player->GetX();
+	int py = local_player->GetY();
+	int pz = local_player->GetZ();
+
+	for(int y=-1; y<2; y++) {
+		for(int x=-1; x<2; x++) {
+			for(int z=-1; z<2; z++) {
+				auto block = world->GetBlock(Position(x + px, y + py, z + pz));
+				if (!block)
+					continue;
+				if (block->IsHazardous() == false && block->IsSolid() == true)
+					return { { x + px, y + py, z + pz } };
+			}
+		}
+	}
+
+	return { };
+}
+
+bool HTTP_XMPP_gateway::Summon(const std::string & what)
+{
+	uint64_t now = GetMs();
+	if (now - prev_summon >= 31000) {
+		LOG_INFO("Summon: " << what);
+		SendChatCommand("summon " + what + " ~ ~ ~");
+		prev_summon = now;
+		return true;
+	}
+
+	return false;
+}
+
 HTTP_XMPP_gateway::HTTP_XMPP_gateway(const bool use_renderer_, std::pair<int, int> resolution, int http_port) :
 	TemplatedBehaviourClient<HTTP_XMPP_gateway>(use_renderer_, resolution), http_port(http_port)
 {
-    std::cout << "Known commands:\n";
-    std::cout << "    Pathfinding to position:\n";
-    std::cout << "        name goto x y z (speed_multiplier=1.0)\n";
-    std::cout << "    Stop what you're doing:\n";
-    std::cout << "        name stop\n";
-    std::cout << "    Place a block:\n";
-    std::cout << "        name place_block minecraft:item x y z\n";
-    std::cout << "    Break a block:\n";
-    std::cout << "        name dig x y z\n";
-    std::cout << "    Interact (right click) a block:\n";
-    std::cout << "        name interact x y z\n";
-    std::cout << "    Screen shot:\n";
-    std::cout << "        name screenshot\n";
-
     srand(GetMs());
 
     latest_action = GetMs();
@@ -188,7 +232,7 @@ HTTP_XMPP_gateway::HTTP_XMPP_gateway(const bool use_renderer_, std::pair<int, in
 					auto pos = get_coordinate(req);
 					if (pos.has_value()) {
 						printf("HTTP[interact]: %d,%d,%d\n", std::get<0>(pos.value()), std::get<1>(pos.value()), std::get<2>(pos.value()));
-						CmdInteract(std::get<0>(pos.value()), std::get<1>(pos.value()), std::get<2>(pos.value()));
+						CmdInteract(Position(std::get<0>(pos.value()), std::get<1>(pos.value()), std::get<2>(pos.value())), -1);
 					}
 			    });
 
@@ -323,53 +367,44 @@ HTTP_XMPP_gateway::HTTP_XMPP_gateway(const bool use_renderer_, std::pair<int, in
 				uint64_t until_bored = GetMs() + sleep_time;
 				do {
 					usleep(101000);
+
+					if (go_now.exchange(false)) {
+						LOG_INFO("override sleep");
+						break;
+					}
 				}
 				while(GetMs() < until_bored);
 
 				LOG_INFO("bored!");
+				Position prev_interaction_pos(0, 0, 0);
 				uint64_t prev_latest_action = latest_action;
 				int      activity_time      = (rand() % 150000) + 1;
 				uint64_t max_until          = activity_time + GetMs();
 				printf("Walking around for %.3f seconds\n", activity_time / 1000.);
 				while(GetMs() < max_until) {
-					auto local_player = entity_manager->GetLocalPlayer();
-
-					int x = local_player->GetX();
-					int y = local_player->GetY();
-					int z = local_player->GetZ();
-					int newx = 0, newy = 0, newz = 0;
-					bool ok = false;
-					for(int i=0; i<16; i++) {
-						newx = x + (rand() % 200) - 100;
-						newy = y + (rand() %   5) -   1;
-						newz = z + (rand() % 200) - 100;
-						if (seen.find({ newx, newy, newz }) == seen.end())
-							break;
-					}
+					auto new_position = FindRandomLocation();
+					if (new_position.has_value() == false)
+						break;
 
 					if (prev_latest_action != latest_action)
 						break;
 
 					std::string summon;
-                                        if (CmdGoTo(newx, newy, newz, 25000))
-						summon = "summon minecraft:bird ~ ~ ~";
+                                        if (CmdGoTo(new_position.value().x, new_position.value().y, new_position.value().z, 25000))
+						Summon("minecraft:bird");
 					else {
+						auto local_player = entity_manager->GetLocalPlayer();
 						if (local_player->IsInWater())
-						       summon = "summon minecraft:tropical_fish ~ ~ ~";
+						       Summon("minecraft:tropical_fish");
 						else
-						       summon = "summon minecraft:cat ~ ~ ~";
+						       Summon("minecraft:cat");
 					}
 
-					if (summon.empty() == false) {
-					       uint64_t now = GetMs();
-					       if (now - prev_summon >= 31000) {
-						       SendChatCommand(summon);
-						       prev_summon = now;
-						       LOG_INFO("Summon");
-					       }
+					auto object = FindObjectToInteract();
+					if (object.has_value() && object.value() != prev_interaction_pos) {
+						prev_interaction_pos = object.value();
+						CmdInteract(object.value(), 10000);
 					}
-
-				        CmdInteract(local_player->GetX() + (rand() % 3) - 1, local_player->GetY() + (rand() % 3) - 1, local_player->GetZ() + (rand() % 3) - 1);
 				}
 
 				latest_action = GetMs();
@@ -459,9 +494,12 @@ void HTTP_XMPP_gateway::CmdDig(int x, int y, int z)
         SetBehaviourTree(tree);
 }
 
-void HTTP_XMPP_gateway::CmdInteract(int x, int y, int z)
+void HTTP_XMPP_gateway::CmdInteract(const Position & pos, int timeout)
 {
-	Position pos(x, y, z);
+        LOG_INFO("Interact at: " << pos);
+
+	finished_walking = false;
+
         auto tree = Builder<HTTP_XMPP_gateway>("interact")
             // shortcut for composite<Sequence<HTTP_XMPP_gateway>>()
             .sequence()
@@ -472,41 +510,42 @@ void HTTP_XMPP_gateway::CmdInteract(int x, int y, int z)
                     .selector()
                         // Perform action using the data in the blackboard
                         .leaf("interact with block", InteractWithBlockBlackboard)
-                        // Say something if it fails
-                        .leaf(Say, "Interacting failed :(")
+			.leaf([&](HTTP_XMPP_gateway& c) { c.SetBehaviourTree(nullptr); finished_walking = true; return Status::Success; })
                     .end()
                     // Remove interaction position in the blackboard because
                     // we don't want to leave a mess (and to show how to do it)
                     .leaf(RemoveBlackboardData, "InteractWithBlock.pos")
                 .end()
                 // Switch back to empty behaviour
-                .leaf([](HTTP_XMPP_gateway& c) { c.SetBehaviourTree(nullptr); return Status::Success; })
+                .leaf([&](HTTP_XMPP_gateway& c) { c.SetBehaviourTree(nullptr); finished_walking = true; return Status::Success; })
             .end();
 
         SetBehaviourTree(tree);
+
+	if (timeout < 0)  // negative is async
+		return;
+
+        auto start = GetMs();
+        while(!finished_walking && GetMs() < start + timeout)
+                usleep(101000);  // TODO: cv
+
+        SetBehaviourTree(nullptr);
 }
 
 bool HTTP_XMPP_gateway::CmdGoTo(int x, int y, int z, int timeout)
 {
+	const bool sprint = true;
         float speed_multiplier = 1.0f;
         Position target_position = Position(x, y, z);
 
+	finished_walking = false;
+
         auto tree = Builder<HTTP_XMPP_gateway>("goto tree")
             .sequence()
-                // Perform the pathfinding in a Selector,
-                // so it exits as soon as one leaf
-                // returns success
                 .selector()
-                    // The next three lines do exactly the same,
-                    // they're only here to show the different
-                    // possibilities to create a leaf. Note that
-                    // only the lambda solution can use default
-                    // parameters values
-                    .leaf("go to lambda", [=](HTTP_XMPP_gateway& c) { return GoTo(c, target_position, 0, 0, 0, true, false, speed_multiplier); })
-                    .leaf("go to function", GoTo, target_position, 0, 0, 0, true, false, speed_multiplier)
-                    .leaf("go to std::bind", std::bind(GoTo, std::placeholders::_1, target_position, 0, 0, 0, true, false, speed_multiplier))
+                    .leaf("go to lambda", [=](HTTP_XMPP_gateway& c) { return GoTo(c, target_position, 0, 0, 0, true, sprint, speed_multiplier); })
+	            .leaf("fallback",     [&](HTTP_XMPP_gateway& c) { c.SetBehaviourTree(nullptr); finished_walking = true; return Status::Success; })
                 .end()
-                // Switch back to empty behaviour
                 .leaf([&](HTTP_XMPP_gateway& c) { c.SetBehaviourTree(nullptr); finished_walking = true; return Status::Success; })
             .end();
 
@@ -524,7 +563,7 @@ bool HTTP_XMPP_gateway::CmdGoTo(int x, int y, int z, int timeout)
         if (finished_walking)
                 seen.insert({ x, y, z });
         else
-                printf("Walking to %d,%d,%d timed out\n", x, y, z);
+                LOG_INFO("Walking to " << Position(x, y, z) << " timed out");
 
         return finished_walking;
 }
@@ -538,28 +577,7 @@ void HTTP_XMPP_gateway::ProcessChatMsg(const std::vector<std::string>& splitted_
 
     if (splitted_msg[1] == "help")
     {
-	    SendChatMessage("goto / place_block / dig / interact / screenshot");
-    }
-    else if (splitted_msg[1] == "goto")
-    {
-        if (splitted_msg.size() < 5)
-        {
-            SendChatMessage("Usage: [BotName] [goto] [x] [y] [z] [speed_multiplier]");
-            return;
-        }
-
-	try
-	{
-		CmdGoTo(std::stoi(splitted_msg[2]), std::stoi(splitted_msg[3]), std::stoi(splitted_msg[4]), 15000);
-	}
-	catch (const std::invalid_argument&)
-	{
-		return;
-	}
-	catch (const std::out_of_range&)
-	{
-		return;
-	}
+	    SendChatMessage("stop / go / screenshot");
     }
     else if (splitted_msg[1] == "screenshot")
     {
@@ -573,83 +591,8 @@ void HTTP_XMPP_gateway::ProcessChatMsg(const std::vector<std::string>& splitted_
         // Stop any running behaviour
         SetBehaviourTree(nullptr);
     }
-    else if (splitted_msg[1] == "place_block")
+    else if (splitted_msg[1] == "go")
     {
-        if (splitted_msg.size() < 6)
-        {
-            SendChatMessage("Usage: [BotName] [place_block] [item] [x] [y] [z]");
-            return;
-        }
-        const std::string& item = splitted_msg[2];
-        Position pos;
-        try
-        {
-            pos = Position(std::stoi(splitted_msg[3]), std::stoi(splitted_msg[4]), std::stoi(splitted_msg[5]));
-        }
-        catch (const std::invalid_argument&)
-        {
-            return;
-        }
-        catch (const std::out_of_range&)
-        {
-            return;
-        }
-        LOG_INFO("Asked to place a block at " << pos << " (" << item << ")");
-
-        auto tree = Builder<HTTP_XMPP_gateway>("place block")
-            // shortcut for composite<Sequence<HTTP_XMPP_gateway>>()
-            .sequence()
-                .succeeder().leaf(PlaceBlock, item, pos, PlayerDiggingFace::Up, true, true, true)
-                // Switch back to empty behaviour
-                .leaf([](HTTP_XMPP_gateway& c) { c.SetBehaviourTree(nullptr); return Status::Success; })
-            .end();
-
-        SetBehaviourTree(tree);
-    }
-    else if (splitted_msg[1] == "terminate") {
-	    should_be_closed = true;  // TODO
-	    exit(0);
-    }
-    else if (splitted_msg[1] == "dig")
-    {
-        if (splitted_msg.size() < 5)
-        {
-            SendChatMessage("Usage: [BotName] [dig] [x] [y] [z]");
-            return;
-        }
-
-        try
-        {
-	    CmdDig(std::stoi(splitted_msg[2]), std::stoi(splitted_msg[3]), std::stoi(splitted_msg[4]));
-        }
-        catch (const std::invalid_argument&)
-        {
-            return;
-        }
-        catch (const std::out_of_range&)
-        {
-            return;
-        }
-    }
-    else if (splitted_msg[1] == "interact")
-    {
-        if (splitted_msg.size() < 5)
-        {
-            SendChatMessage("Usage: [BotName] [interact] [x] [y] [z]");
-            return;
-        }
-
-        try
-        {
-            CmdInteract(std::stoi(splitted_msg[2]), std::stoi(splitted_msg[3]), std::stoi(splitted_msg[4]));
-        }
-        catch (const std::invalid_argument&)
-        {
-            return;
-        }
-        catch (const std::out_of_range&)
-        {
-            return;
-        }
+	    go_now = true;
     }
 }
